@@ -69,5 +69,7 @@ Portal → Function App → Diagnose and solve problems → Run **Function App M
 ## Security
 Instrumentation Key & Connection String redacted in log.
 
+This script also issues a silent GET request to the relative path `/AppInsightsDiag`  purely for internal statistics / reachability tracking. A `404` response is expected and classified as `Expected404`; no response body is stored, and this call does not affect Application Insights telemetry or expose secrets.
+
 
 

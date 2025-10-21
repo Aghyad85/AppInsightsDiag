@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory=$false)][switch]$RedactTelemetry,
     [Parameter(Mandatory=$false)][string]$HostJsonPath,
     [Parameter(Mandatory=$false)][string]$HtmlReportPath,
-    [Parameter(Mandatory=$false)][string]$OutputDirectory = 'Application Insights Diagnostic'
+    [Parameter(Mandatory=$false)][string]$OutputDirectory = 'Application Insights Diagnostic',
+    [Parameter(Mandatory=$false)][string]$SiteRelativePath = '/AppInsightsDiag'
 )
 
 # Establish base path early (avoid null later); Kudu sets PSScriptRoot sometimes null.
@@ -94,7 +95,7 @@ function Get-AppSetting([string]$name) { (Get-Item -Path "Env:$name" -ErrorActio
 # ---------------------------
 # Step 1: Configuration status detection
 # ---------------------------
-$runConfig = $true; $runConnectivity = $true; $runTelemetry = $true; $runSampling = $true
+$runConfig = $true; $runSiteEndpoint = $true; $runConnectivity = $true; $runTelemetry = $true; $runSampling = $true
 $SamplingLookbackHours = 24
 
 if ($VerboseMode -and $runConfig) { Write-Output "[Step 1/4] Configuration status detection (verbose)" } else { Write-Output "[Step 1/4] Configuration status detection..." }
@@ -145,6 +146,46 @@ if (-not $curlNativePath) {
 if ($runConnectivity -or $runTelemetry) {
     if ($VerboseMode) { Write-Output "`n2. *******Connectivity Check.*******"; Write-Output "NOTE: Run the curl below in Kudu (console) for in-app verification." } else { Write-Output "[Step 2/4] Connectivity test command..." }
     Add-Log "Connectivity section"
+}
+
+# ---------------------------
+# Site Endpoint (App base URL) GET test (Step 2)
+# ---------------------------
+if ($runSiteEndpoint) {
+    $siteEndpointStatus = 'Unknown'
+    if ($AppName) {
+        $siteBase = "https://$AppName.azurewebsites.net"
+        $relative = if ($SiteRelativePath.StartsWith('/')) { $SiteRelativePath } else { "/$SiteRelativePath" }
+        $fullUrl = "$siteBase$relative"
+    if ($VerboseMode) { Write-Output "[Hidden] Site endpoint GET test (tracking only, expecting 404): $fullUrl" }
+        Add-Log "Site endpoint test url=$fullUrl"
+        $curlPathSite = Get-CurlPath
+        try {
+            if ($curlPathSite) {
+                $tmpSite = Join-Path $env:TEMP '_ai_site_tmp'
+                $statusSite = & $curlPathSite -s -o $tmpSite -w "%{http_code}" -L $fullUrl
+                Remove-Item $tmpSite -ErrorAction SilentlyContinue
+            } else {
+                $respSite = Invoke-WebRequest -Uri $fullUrl -Method Get -ErrorAction Stop
+                $statusSite = $respSite.StatusCode.value__
+            }
+            switch ($statusSite) {
+                {$_ -in '200','302','301'} { $siteEndpointStatus = 'Reachable' }
+                '404' { $siteEndpointStatus = 'Expected404' }
+                default { $siteEndpointStatus = "Status:$statusSite" }
+            }
+            if ($VerboseMode) { Write-Output ("Site endpoint result: HTTP {0} -> {1}" -f $statusSite,$siteEndpointStatus) }
+            Add-Log "Site endpoint status=$statusSite classification=$siteEndpointStatus"
+        } catch {
+            Write-Output "Site endpoint test failed: $_"
+            Add-Log "Site endpoint test failed error=$_"
+            $siteEndpointStatus = 'Error'
+        }
+        if ($VerboseMode) { Write-Output "=============================================" }
+    } else {
+        if ($VerboseMode) { Write-Output "[Hidden] Site endpoint test skipped (AppName env var missing)." }
+        $siteEndpointStatus = 'Skipped'
+    }
 }
 
 # Extract APPLICATIONINSIGHTS_CONNECTION_STRING (trim whitespace)
