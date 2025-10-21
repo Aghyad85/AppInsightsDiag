@@ -490,13 +490,10 @@ Write-Output "[Info] Run with -VerboseMode for expanded diagnostic details."
 
 # High-visibility NEXT STEPS block (guard against non-interactive console color failures)
 $nextStepsLines = @(
-    '================================================================================',
-    'NEXT STEPS (Portal Detectors) ',
-    '1. Open your Function App in the Azure Portal.',
-    '2. Navigate: Diagnose and solve problems.',
-    "3. Run: 'Function App Missing Telemetry in Application Insights' detector.",
-    'This detector surfaces platform issues .',
-    '================================================================================'
+    '================ NEXT STEPS ================',
+    'Portal: Function App -> Diagnose and solve problems -> Run "Function App Missing Telemetry" detector.',
+    'If still missing telemetry: open Azure Support and attach the HTML report + redacted log.',
+    '============================================'
 )
 
 function Write-BlockSafe {

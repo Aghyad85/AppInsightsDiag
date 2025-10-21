@@ -71,5 +71,9 @@ Instrumentation Key & Connection String redacted in log.
 
 This script also issues a silent GET request to the relative path `/AppInsightsDiag`  purely for internal statistics / reachability tracking. A `404` response is expected and classified as `Expected404`; no response body is stored, and this call does not affect Application Insights telemetry or expose secrets.
 
+## Support / Escalation
+
+If issues persist after using this script and the portal detector, open an Azure Support request and attach the generated HTML report (in the `Application Insights Diagnostic` folder or the path from `-HtmlReportPath`) plus the redacted log for faster triage.
+
 
 
