@@ -2,6 +2,8 @@
 
 Minimal script to validate Application Insights telemetry for Azure Functions / App Service.
 
+> Hosting plan support: Works on Windows & Linux Dedicated, Premium, and Elastic Premium plans, plus Windows Consumption. Not supported on **Linux Consumption** or **Flex Consumption** plans (Kudu / required console features unavailable there).
+
 ## What It Does
 1. Checks config (connection string vs legacy iKey)
 2. Tests ingestion endpoint reachability
@@ -12,14 +14,68 @@ Minimal script to validate Application Insights telemetry for Azure Functions / 
 
 
 ## Run From Kudu (Azure App Service / Functions)
+
+### Windows (PowerShell Console)
 1. Download `AppInsightsDiag.ps1` locally.
 2. Open: `https://<sitename>.scm.azurewebsites.net/DebugConsole/?shell=powershell`
 3. Drag & drop `AppInsightsDiag.ps1` into the Kudu file pane (e.g. `/site/wwwroot`).
 4. In the Kudu PowerShell console, execute:
+
 	```powershell
 	./AppInsightsDiag.ps1
 	```
 5. Locate the new `Application Insights Diagnostic` folder, download the HTML report.
+
+### Linux (Bash Console — Dedicated / Premium / Elastic Premium only)
+1. Download `appinsights_diag.sh` locally.
+2. Open: `https://<sitename>.scm.azurewebsites.net/newui/fileManager` 
+3. Drag & drop `appinsights_diag.sh` into `home`.
+4. go to SSH then chose SSH to Kudu.
+
+5. Make it executable (sometimes already is):
+
+	```bash
+	chmod +x appinsights_diag.sh
+	```
+6. Run it (default is verbose mode):
+
+```bash
+./appinsights_diag.sh
+```
+
+Quiet (minimal) output:
+
+```bash
+./appinsights_diag.sh --quiet
+```
+
+Full mode (adds environment snapshot + all guidance):
+
+```bash
+./appinsights_diag.sh --full
+```
+7. Download the HTML report & log from `Application Insights Diagnostic` directory.
+8. (Not supported on Linux Consumption / Flex Consumption — no Kudu shell there.)
+
+Linux flags (summary):
+
+| Flag | Purpose |
+|------|---------|
+| (default) | Verbose guidance enabled |
+| `--quiet` / `-q` | Minimal output (suppress guidance lines) |
+| `--full` / `-F` | Full mode (verbose + extra environment snapshot) |
+| `--output-dir <dir>` | Custom output directory |
+| `--report <file>` | Custom HTML report path/name |
+| `--site-path <rel>` | Change silent GET relative path (default `/AppInsightsDiag`) |
+| `--disable-site-ping` | Skip silent site reachability GET |
+| `--no-redact` | Do not redact connection string / iKey in log |
+| `--verbose` / `-v` | (Redundant now) explicitly set verbose |
+
+Example combined usage:
+
+```bash
+./appinsights_diag.sh --full --output-dir diag_out --report /home/site/wwwroot/ai-linux.html --site-path /PingStats --disable-site-ping
+```
 
 
 ## Troubleshooting (Quick)
@@ -43,13 +99,13 @@ Minimal script to validate Application Insights telemetry for Azure Functions / 
 
 Event validation:
 
-```
+```kusto
 customEvents | where timestamp > ago(1h) | where name == 'curlConnectivityTestEvent-<GUID>'
 ```
 
 Sampling retention:
 
-```
+```kusto
 union requests, dependencies, pageViews, browserTimings, exceptions, traces
 | where timestamp > ago(24h)
 | summarize RetainedPercentage = 100/avg(coalesce(itemCount,1)) by bin(timestamp,1h), itemType

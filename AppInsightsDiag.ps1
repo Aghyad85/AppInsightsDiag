@@ -415,16 +415,31 @@ if ($HostJsonPath) {
     }
 }
 Write-Output ("[Info] host.json resolved from {0}: {1}" -f $hostJsonSource, $hostJsonPath)
+Add-Log ("host.json resolution source={0} path={1}" -f $hostJsonSource,$hostJsonPath)
 $samplingEnabled = $null
+${hostJsonParseError} = $null
+${hostJsonStructureIssues} = @()
 if (Test-Path $hostJsonPath) {
     try {
+        $hostJsonItem = Get-Item $hostJsonPath -ErrorAction Stop
+        $hostJsonSize = $hostJsonItem.Length
+        Add-Log ("host.json exists size={0} bytes" -f $hostJsonSize)
         $hostJsonContent = Get-Content $hostJsonPath -Raw -ErrorAction Stop
+        $trimPreview = $hostJsonContent.Substring(0,[Math]::Min(300,$hostJsonContent.Length)).Replace("`r"," ").Replace("`n"," ")
+        Add-Log ("host.json head(300c)={0}" -f $trimPreview)
         $hostJsonObj = $hostJsonContent | ConvertFrom-Json -ErrorAction Stop
+        if (-not $hostJsonObj.logging) { $hostJsonStructureIssues += 'Missing logging node'; Add-Log 'host.json structure: missing logging'; }
+        if ($hostJsonObj.logging -and -not $hostJsonObj.logging.applicationInsights) { $hostJsonStructureIssues += 'Missing logging.applicationInsights node'; Add-Log 'host.json structure: missing logging.applicationInsights'; }
+        if ($hostJsonObj.logging.applicationInsights -and -not $hostJsonObj.logging.applicationInsights.samplingSettings) { $hostJsonStructureIssues += 'Missing samplingSettings node'; Add-Log 'host.json structure: missing samplingSettings'; }
+        if ($hostJsonStructureIssues.Count -gt 0) { Add-Log ("host.json structure issues: {0}" -f ($hostJsonStructureIssues -join '; ')) }
         $samplingEnabled = $hostJsonObj.logging.applicationInsights.samplingSettings.isEnabled
+        if ($null -eq $samplingEnabled) { Add-Log 'samplingSettings.isEnabled not present or null'; } else { Add-Log ("samplingSettings.isEnabled={0}" -f $samplingEnabled) }
         Write-Output (" - samplingSettings.isEnabled={0}" -f $samplingEnabled)
         $samplingFlag = $samplingEnabled
     } catch {
-        Write-Output " - host.json parse failed: $_"
+        ${hostJsonParseError} = $_.Exception.Message
+        Add-Log ("host.json parse failed exceptionType={0} message={1}" -f $_.Exception.GetType().FullName, ${hostJsonParseError})
+        Write-Output (" - host.json parse failed: {0}" -f ${hostJsonParseError})
         $samplingFlag = 'ParseFailed'
     }
 } else {
@@ -444,7 +459,15 @@ if ($samplingEnabled -eq $false) {
     Write-Output " - Drops below 100: Sampling ACTIVE (telemetry reduced)";
     Write-Output " - Variations (e.g. 95, 97): Adaptive sampling adjusting to volume";
 } else {
-    Write-Output "[Info] Sampling status unknown or host.json missing; showing query for manual inspection:";
+    # Provide nuanced messaging if parse failed vs not found; treat NotFound as assumed enabled per user request
+    if ($samplingFlag -eq 'ParseFailed') {
+        Write-Output ("[Info] Sampling status UNKNOWN: host.json parse failed. Error: {0}. See detailed log for head + structure diagnostics." -f ${hostJsonParseError})
+    } elseif ($samplingFlag -eq 'NotFound') {
+        Write-Output "[Info] Sampling setting not found; assuming default platform sampling is ENABLED. Use retention query to confirm effective reduction.";
+        $samplingFlag = 'NotFound(AssumedEnabled)'
+    } else {
+        Write-Output "[Info] Sampling status unknown; showing query for manual inspection:";
+    }
     Write-Output "Kusto query (24h retention sampling assessment):"
     Write-Output $query
     Write-Output ""
