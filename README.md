@@ -31,13 +31,7 @@ Minimal script to validate Application Insights telemetry for Azure Functions / 
 2. Open: `https://<sitename>.scm.azurewebsites.net/newui/fileManager` 
 3. Drag & drop `appinsights_diag.sh` into `home`.
 4. go to SSH then chose SSH to Kudu.
-
-5. Make it executable (sometimes already is):
-
-	```bash
-	chmod +x appinsights_diag.sh
-	```
-6. Run it (default is verbose mode):
+5. Run it (default is verbose mode):
 
 ```bash
 ./appinsights_diag.sh
