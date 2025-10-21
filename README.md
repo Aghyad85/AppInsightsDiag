@@ -34,9 +34,9 @@ Minimal script to validate Application Insights telemetry for Azure Functions / 
 
 ## Status Cheat Sheet
 
-* Configuration: OK | Both exist | `iKey` only | Missing
-* Connectivity: Reachable | `NotFound` (404) | Status:{CODE} | Error
-* Telemetry: HTTP 200 Rec:1 Acc:1 Err:0 = success (else inspect body)
+* **Configuration**: OK | Both exist | `iKey` only | Missing
+* **Connectivity**: Reachable | `NotFound` (404) | Status:{CODE} | Error
+* **Telemetry**: HTTP 200 Rec:1 Acc:1 Err:0 = success (else inspect body)
 * `SamplingFlag`: True | False | `NotFound` | `ParseFailed`
 
 ## Kusto Snippets
