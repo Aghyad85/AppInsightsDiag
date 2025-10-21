@@ -22,36 +22,8 @@ Minimal script to validate Application Insights telemetry for Azure Functions / 
 5. Locate the new `Application Insights Diagnostic` folder, download the HTML report.
 
 
-## Common Options
-```powershell
-./AppInsightsDiag.ps1 -VerboseMode
-./AppInsightsDiag.ps1 -HtmlReportPath C:\temp\ai-report.html
-./AppInsightsDiag.ps1 -HostJsonPath C:\home\site\wwwroot\host.json
-```
-
-
-## Status Cheat Sheet
-Configuration: OK | Both exist | iKey only | Missing
-Connectivity: Reachable | NotFound(404) | Status:<code> | Error
-Telemetry: HTTP 200 Rec:1 Acc:1 Err:0 = success (else inspect body)
-SamplingFlag: True | False | NotFound | ParseFailed
-
-## Kusto Snippets
-Event validation:
-```kusto
-customEvents | where timestamp > ago(1h) | where name == 'curlConnectivityTestEvent-<GUID>'
-```
-Sampling retention:
-```kusto
-union requests, dependencies, pageViews, browserTimings, exceptions, traces
-| where timestamp > ago(24h)
-| summarize RetainedPercentage = 100/avg(coalesce(itemCount,1)) by bin(timestamp,1h), itemType
-```
-
-## Portal Detector
-Portal → Function App → Diagnose and solve problems → Run **Function App Missing Telemetry in Application Insights** (optional **Open Telemetry**).
-
 ## Troubleshooting (Quick)
+
 | Issue | Hint |
 |-------|------|
 | 404 connectivity | Wrong ingestion endpoint region. |
@@ -59,12 +31,43 @@ Portal → Function App → Diagnose and solve problems → Run **Function App M
 | Sampling ParseFailed | Invalid host.json. |
 | Missing config | Add APPLICATIONINSIGHTS_CONNECTION_STRING. |
 
+
+## Status Cheat Sheet
+
+* Configuration: OK | Both exist | `iKey` only | Missing
+* Connectivity: Reachable | `NotFound` (404) | Status:{CODE} | Error
+* Telemetry: HTTP 200 Rec:1 Acc:1 Err:0 = success (else inspect body)
+* `SamplingFlag`: True | False | `NotFound` | `ParseFailed`
+
+## Kusto Snippets
+
+Event validation:
+
+```
+customEvents | where timestamp > ago(1h) | where name == 'curlConnectivityTestEvent-<GUID>'
+```
+
+Sampling retention:
+
+```
+union requests, dependencies, pageViews, browserTimings, exceptions, traces
+| where timestamp > ago(24h)
+| summarize RetainedPercentage = 100/avg(coalesce(itemCount,1)) by bin(timestamp,1h), itemType
+```
+
+## Common Options
+```powershell
+./AppInsightsDiag.ps1 -VerboseMode
+./AppInsightsDiag.ps1 -HtmlReportPath C:\temp\ai-report.html
+./AppInsightsDiag.ps1 -HostJsonPath C:\home\site\wwwroot\host.json
+```
+
+## Portal Detector
+
+Portal → Function App → Diagnose and solve problems → Run **Function App Missing Telemetry in Application Insights** (optional **Open Telemetry**).
+
 ## Security
 Instrumentation Key & Connection String redacted in log.
 
-## Roadmap
-Badges, JSON summary output, non‑zero exit codes, dark mode, full log option.
 
-## Contribute
-Fork → branch → change → PR (include HTML screenshot).
 
