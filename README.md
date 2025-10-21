@@ -12,9 +12,9 @@ Minimal script to validate Application Insights telemetry for Azure Functions / 
 
 
 ## Run From Kudu (Azure App Service / Functions)
-1. Download `Check-AI-Kudu.ps1` locally.
+1. Download `AppInsightsDiag.ps1` locally.
 2. Open: `https://<sitename>.scm.azurewebsites.net/DebugConsole/?shell=powershell`
-3. Drag & drop `Check-AI-Kudu.ps1` into the Kudu file pane (e.g. `/site/wwwroot`).
+3. Drag & drop `AppInsightsDiag.ps1` into the Kudu file pane (e.g. `/site/wwwroot`).
 4. In the Kudu PowerShell console, execute:
 	```powershell
 	./AppInsightsDiag.ps1
