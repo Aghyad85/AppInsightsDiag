@@ -87,7 +87,9 @@ Example combined usage:
 * **Configuration**: OK | Both exist | `iKey` only | Missing
 * **Connectivity**: Reachable | `NotFound` (404) | Status:{CODE} | Error
 * **Telemetry**: HTTP 200 Rec:1 Acc:1 Err:0 = success (else inspect body)
-* `SamplingFlag`: True | False | `NotFound` | `ParseFailed`
+* `SamplingFlag`: True | False | `NotFound` | `ParseFailed` | `ImplicitDefaultEnabled`
+
+`ImplicitDefaultEnabled` means no explicit `samplingSettings.isEnabled` value was found in `host.json` (either the `samplingSettings` node or the `isEnabled` property is absent). In this case the platform's default Application Insights sampling is active (enabled) automatically.
 
 ## Kusto Snippets
 
@@ -106,6 +108,7 @@ union requests, dependencies, pageViews, browserTimings, exceptions, traces
 ```
 
 ## Common Options
+
 ```powershell
 ./AppInsightsDiag.ps1 -VerboseMode
 ./AppInsightsDiag.ps1 -HtmlReportPath C:\temp\ai-report.html
@@ -117,6 +120,7 @@ union requests, dependencies, pageViews, browserTimings, exceptions, traces
 Portal → Function App → Diagnose and solve problems → Run **Function App Missing Telemetry in Application Insights** (optional **Open Telemetry**).
 
 ## Security
+
 Instrumentation Key & Connection String redacted in log.
 
 This script also issues a silent GET request to the relative path `/AppInsightsDiag`  purely for internal statistics / reachability tracking. A `404` response is expected and classified as `Expected404`; no response body is stored, and this call does not affect Application Insights telemetry or expose secrets.
@@ -124,6 +128,3 @@ This script also issues a silent GET request to the relative path `/AppInsightsD
 ## Support / Escalation
 
 If issues persist after using this script and the portal detector, open an Azure Support request and attach the generated HTML report (in the `Application Insights Diagnostic` folder or the path from `-HtmlReportPath`) plus the redacted log for faster triage.
-
-
-

@@ -432,10 +432,29 @@ if (Test-Path $hostJsonPath) {
         if ($hostJsonObj.logging -and -not $hostJsonObj.logging.applicationInsights) { $hostJsonStructureIssues += 'Missing logging.applicationInsights node'; Add-Log 'host.json structure: missing logging.applicationInsights'; }
         if ($hostJsonObj.logging.applicationInsights -and -not $hostJsonObj.logging.applicationInsights.samplingSettings) { $hostJsonStructureIssues += 'Missing samplingSettings node'; Add-Log 'host.json structure: missing samplingSettings'; }
         if ($hostJsonStructureIssues.Count -gt 0) { Add-Log ("host.json structure issues: {0}" -f ($hostJsonStructureIssues -join '; ')) }
-        $samplingEnabled = $hostJsonObj.logging.applicationInsights.samplingSettings.isEnabled
-        if ($null -eq $samplingEnabled) { Add-Log 'samplingSettings.isEnabled not present or null'; } else { Add-Log ("samplingSettings.isEnabled={0}" -f $samplingEnabled) }
-        Write-Output (" - samplingSettings.isEnabled={0}" -f $samplingEnabled)
-        $samplingFlag = $samplingEnabled
+        # Detect presence of samplingSettings and isEnabled explicitly
+        $hasSamplingSettingsNode = $hostJsonObj.logging.applicationInsights.samplingSettings
+        $hasIsEnabledProperty = $false
+        if ($hasSamplingSettingsNode) { $hasIsEnabledProperty = $hasSamplingSettingsNode.PSObject.Properties.Name -contains 'isEnabled' }
+        if (-not $hasSamplingSettingsNode -or -not $hasIsEnabledProperty) {
+            # Requirement: If samplingSettings or the isEnabled value not present, inform user sampling not set and therefore enabled by default.
+            Add-Log 'samplingSettings.isEnabled missing -> default platform sampling ENABLED'
+            Write-Output ' - samplingSettings.isEnabled not specified -> sampling not set in host.json; default platform sampling is ENABLED.'
+            $samplingEnabled = $true  # Treat implicit default as enabled for downstream logic
+            $samplingFlag = 'ImplicitDefaultEnabled'
+        } else {
+            $samplingEnabled = $hostJsonObj.logging.applicationInsights.samplingSettings.isEnabled
+            if ($null -eq $samplingEnabled) {
+                Add-Log 'samplingSettings.isEnabled present but null -> treating as default enabled'
+                Write-Output ' - samplingSettings.isEnabled is null -> treating as default ENABLED.'
+                $samplingEnabled = $true
+                $samplingFlag = 'ImplicitDefaultEnabled'
+            } else {
+                Add-Log ("samplingSettings.isEnabled={0}" -f $samplingEnabled)
+                Write-Output (" - samplingSettings.isEnabled={0}" -f $samplingEnabled)
+                $samplingFlag = $samplingEnabled
+            }
+        }
     } catch {
         ${hostJsonParseError} = $_.Exception.Message
         Add-Log ("host.json parse failed exceptionType={0} message={1}" -f $_.Exception.GetType().FullName, ${hostJsonParseError})
