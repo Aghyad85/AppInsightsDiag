@@ -1,4 +1,4 @@
-# Application Insights Diagnostics
+# Application Insights Diagnostics (Preview)
 
 Minimal diagnostic script to validate **Application Insights telemetry** for **Azure Functions** or **App Service**.
 
