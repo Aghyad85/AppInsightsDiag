@@ -1,10 +1,10 @@
 param(
-    [Parameter(Mandatory=$false)][switch]$VerboseMode,
-    [Parameter(Mandatory=$false)][switch]$RedactTelemetry,
-    [Parameter(Mandatory=$false)][string]$HostJsonPath,
-    [Parameter(Mandatory=$false)][string]$HtmlReportPath,
-    [Parameter(Mandatory=$false)][string]$OutputDirectory = 'Application Insights Diagnostic',
-    [Parameter(Mandatory=$false)][string]$SiteRelativePath = '/AppInsightsDiag'
+    [Parameter(Mandatory=$false)][switch] $VerboseMode,
+    [Parameter(Mandatory=$false)][switch] $RedactTelemetry,
+    [Parameter(Mandatory=$false)][string] $HostJsonPath,
+    [Parameter(Mandatory=$false)][string] $HtmlReportPath,
+    [Parameter(Mandatory=$false)][string] $OutputDirectory = 'Application Insights Diagnostic',
+    [Parameter(Mandatory=$false)][string] $SiteRelativePath = '/AppInsightsDiag'
 )
 
 # Establish base path early (avoid null later); Kudu sets PSScriptRoot sometimes null.
@@ -12,24 +12,24 @@ $basePath = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 
 # Application Insights Diagnostic Script (auto-runs all steps)
 Write-Output "=== Application Insights Diagnostic Script ==="
-Write-Output "Expanded step list:";
-Write-Output "  Step 1) Configuration status detection";
-Write-Output "  Step 2) Connectivity curl command";
-Write-Output "  Step 3) Telemetry send + validation query";
-Write-Output "  Step 4) Sampling query + host.json samplingSettings";
+Write-Output "Expanded step list:"
+Write-Output "  Step 1) Configuration status detection"
+Write-Output "  Step 2) Connectivity curl command"
+Write-Output "  Step 3) Telemetry send + validation query"
+Write-Output "  Step 4) Sampling query + host.json samplingSettings"
 Write-Output "============================================="
-Write-Output ("[Info] Script base path: {0}" -f $basePath)
+#  Write-Output ("[Info] Script base path: {0}" -f $basePath)
 
 # Resolve / create output directory (relative paths resolved against base)
 $outputDir = if ([IO.Path]::IsPathRooted($OutputDirectory)) { $OutputDirectory } else { Join-Path $basePath $OutputDirectory }
 if (-not (Test-Path $outputDir)) { New-Item -ItemType Directory -Path $outputDir -Force | Out-Null }
-Write-Output ("[Info] Output directory: {0}" -f $outputDir)
+#  Write-Output ("[Info] Output directory: {0}" -f $outputDir)
 
 # Auto default HTML report if user did not specify a path (now placed in outputDir)
 if (-not $HtmlReportPath) {
     $autoFile = "AI-Diagnostic-Report-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
     $HtmlReportPath = Join-Path $outputDir $autoFile
-    Write-Output ("[Info] No -HtmlReportPath supplied; defaulting to: {0}" -f $HtmlReportPath)
+#     Write-Output ("[Info] No -HtmlReportPath supplied; defaulting to: {0}" -f $HtmlReportPath)
 }
 
 # Resolve HTML report target early
@@ -42,7 +42,9 @@ if ($HtmlReportPath) {
             # Might be new file or directory that doesn't exist yet; check if ends with slash or has extension
             $ext = [IO.Path]::GetExtension($HtmlReportPath)
             if ([string]::IsNullOrWhiteSpace($ext) -and ($HtmlReportPath.TrimEnd() -match '[\\/]$')) { $isDir = $true }
-        } elseif ((Get-Item $HtmlReportPath).PSIsContainer) { $isDir = $true }
+        } elseif ((Get-Item $HtmlReportPath).PSIsContainer) {
+            $isDir = $true
+        }
 
         if ($isDir) {
             $dirTarget = $HtmlReportPath.TrimEnd('/','\\')
@@ -53,8 +55,10 @@ if ($HtmlReportPath) {
             # If path has no extension, append .md
             $ext = [IO.Path]::GetExtension($HtmlReportPath)
             if ([string]::IsNullOrWhiteSpace($ext)) { $HtmlReportPath = "$HtmlReportPath.html" }
+
             # Ensure parent directory exists
             $parent = [IO.Path]::GetDirectoryName((Resolve-Path -LiteralPath (Split-Path -Path $HtmlReportPath -Leaf -Resolve:$false) -ErrorAction SilentlyContinue))
+
             # Above might not work for relative; build absolute
             $absCandidate = if ([IO.Path]::IsPathRooted($HtmlReportPath)) { $HtmlReportPath } else { Join-Path (Get-Location).Path $HtmlReportPath }
             $parentDir = [IO.Path]::GetDirectoryName($absCandidate)
@@ -71,6 +75,7 @@ if ($HtmlReportPath) {
 # Initialize detailed log accumulator early
 $detailedLog = @()
 function Add-Log($msg) { $script:detailedLog += "$(Get-Date -Format o) $msg" }
+
 function Get-CurlPath {
     $candidates = @('curl','curl.exe')
     foreach ($c in $candidates) {
@@ -88,9 +93,9 @@ $ResourceGroup = (Get-Item Env:WEBSITE_RESOURCE_GROUP -ErrorAction SilentlyConti
 Add-Log "Script invoked. Derived AppName=$AppName ResourceGroup=$ResourceGroup"
 if (-not $AppName) { Add-Log "AppName missing (WEBSITE_SITE_NAME not set)" }
 if (-not $ResourceGroup) { Add-Log "ResourceGroup missing (WEBSITE_RESOURCE_GROUP not set)" }
- 
+
 # Helper to fetch environment app settings safely
-function Get-AppSetting([string]$name) { (Get-Item -Path "Env:$name" -ErrorAction SilentlyContinue).Value }
+function Get-AppSetting([string] $name) { (Get-Item -Path "Env:$name" -ErrorAction SilentlyContinue).Value }
 
 # ---------------------------
 # Step 1: Configuration status detection
@@ -127,7 +132,7 @@ switch ($configStatus) {
 }
 $summaryConfig = $configStatus
 Write-Output "============================================="
- # (Sampling handled in final step)
+# (Sampling handled in final step)
 
 # Initialize skip flags
 if (-not $skipSampling) { $skipSampling = $false }
@@ -143,9 +148,12 @@ if (-not $curlNativePath) {
     Add-Log "curl native found at $curlNativePath"
 }
 
-if ($runConnectivity -or $runTelemetry) {
-    if ($VerboseMode) { Write-Output "`n2. *******Connectivity Check.*******"; Write-Output "NOTE: Run the curl below in Kudu (console) for in-app verification." } else { Write-Output "[Step 2/4] Connectivity test command..." }
-    Add-Log "Connectivity section"
+# Defer printing the Step 2 header until we know whether connectivity will be skipped.
+if ($runConnectivity) {
+    Add-Log "Connectivity section pending"
+} else {
+    Write-Output "[Step 2/4] Skip Connectivity test command as APPLICATIONINSIGHTS_CONNECTION_STRING is missing ..."
+    Add-Log "Connectivity section skipped (runConnectivity=false)"
 }
 
 # ---------------------------
@@ -157,7 +165,7 @@ if ($runSiteEndpoint) {
         $siteBase = "https://$AppName.azurewebsites.net"
         $relative = if ($SiteRelativePath.StartsWith('/')) { $SiteRelativePath } else { "/$SiteRelativePath" }
         $fullUrl = "$siteBase$relative"
-    if ($VerboseMode) { Write-Output "[Hidden] Site endpoint GET test (tracking only, expecting 404): $fullUrl" }
+        if ($VerboseMode) { Write-Output "[Hidden] Site endpoint GET test (tracking only, expecting 404): $fullUrl" }
         Add-Log "Site endpoint test url=$fullUrl"
         $curlPathSite = Get-CurlPath
         try {
@@ -169,6 +177,7 @@ if ($runSiteEndpoint) {
                 $respSite = Invoke-WebRequest -Uri $fullUrl -Method Get -ErrorAction Stop
                 $statusSite = $respSite.StatusCode.value__
             }
+
             switch ($statusSite) {
                 {$_ -in '200','302','301'} { $siteEndpointStatus = 'Reachable' }
                 '404' { $siteEndpointStatus = 'Expected404' }
@@ -181,6 +190,7 @@ if ($runSiteEndpoint) {
             Add-Log "Site endpoint test failed error=$_"
             $siteEndpointStatus = 'Error'
         }
+
         if ($VerboseMode) { Write-Output "=============================================" }
     } else {
         if ($VerboseMode) { Write-Output "[Hidden] Site endpoint test skipped (AppName env var missing)." }
@@ -193,7 +203,8 @@ $connString = (Get-AppSetting "APPLICATIONINSIGHTS_CONNECTION_STRING")
 if ($connString) { $connString = $connString.Trim() }
 if ([string]::IsNullOrWhiteSpace($connString)) {
     Add-Log "Connection string missing"
-    if ($VerboseMode) { Write-Output "APPLICATIONINSIGHTS_CONNECTION_STRING not found. Skipping connectivity & telemetry sections." }
+    Write-Output "[Step 2/4] Skipping Connectivity test command as APPLICATIONINSIGHTS_CONNECTION_STRING is missing ..."
+    Add-Log "Connectivity skipped: APPLICATIONINSIGHTS_CONNECTION_STRING missing"
     $skipConnectivity = $true
 }
 
@@ -204,8 +215,20 @@ $endpoint = $endpoint -replace "IngestionEndpoint=", ""
 if (-not $skipConnectivity -and ($runConnectivity -or $runTelemetry)) {
     if (-not $endpoint) {
         if ($VerboseMode) { Write-Output "IngestionEndpoint not found in connection string." }
+        Add-Log "IngestionEndpoint missing in connection string"
         $skipConnectivity = $true
     }
+}
+
+# Now print the Step 2 header only if connectivity will run
+if ($runConnectivity -and -not $skipConnectivity) {
+    if ($VerboseMode) {
+        Write-Output "`n2. *******Connectivity Check.*******"
+        Write-Output "NOTE: Run the curl below in Kudu (console) for in-app verification."
+    } else {
+        Write-Output "[Step 2/4] Connectivity test command..."
+    }
+    Add-Log "Connectivity section"
 }
 
 if (-not $skipConnectivity) {
@@ -213,12 +236,13 @@ if (-not $skipConnectivity) {
     $endpoint = $endpoint.TrimEnd('/')
     $testUrl = "$endpoint/v2/track"
     if ($VerboseMode) {
-        Write-Output "`nRun this command in Kudu PowerShell or CMD to test connectivity , 405 indicates endpoint reachable (method not allowed for HEAD) and is treated as success:" 
+        Write-Output "`nRun this command in Kudu PowerShell or CMD to test connectivity , 405 indicates endpoint reachable (method not allowed for HEAD) and is treated as success:"
         Write-Output "curl -I $testUrl"
     } else {
         Write-Output "Connectivity command: curl -I $testUrl"
         Write-Output "Connectivity success criteria: HTTP 200 or 405 = reachable; 404 = region/endpoint mismatch."
     }
+
     # Execute connectivity test automatically
     $connectivityStatus = "Unknown"
     $curlPath = Get-CurlPath
@@ -240,7 +264,7 @@ if (-not $skipConnectivity) {
             $connectivityStatus = 'Error'
         }
     } else {
-    # Fallback using Invoke-WebRequest HEAD
+        # Fallback using Invoke-WebRequest HEAD
         try {
             $resp = Invoke-WebRequest -Uri $testUrl -Method Head -ErrorAction Stop
             $statusCode = $resp.StatusCode.value__
@@ -258,20 +282,26 @@ if (-not $skipConnectivity) {
     $connectivityStatus = "Ready"
     Write-Output "============================================="
 } else {
-    $connectivityStatus = "Skipped"
+    # Ensure connectivity classification notes missing connection string explicitly
+    if ($skipConnectivity) {
+        $connectivityStatus = "Skipped"
+        $connectivityClassification = "Skipped (no APPLICATIONINSIGHTS_CONNECTION_STRING)"
+    } else {
+        $connectivityStatus = "Skipped"
+        $connectivityClassification = "Skipped"
+    }
 }
 
 if ($runTelemetry -and -not $skipConnectivity -and -not $skipTelemetry) {
     if ($VerboseMode) { Write-Output "`n3. *******Send Minimal Telemetry (curl)*******" } else { Write-Output "[Step 3/4] Telemetry send + validation query..." }
+} else {
+    Write-Output "[Step 3/4] Skipping Telemetry send + validation query as APPLICATIONINSIGHTS_CONNECTION_STRING is missing ..."
 }
 
 # Find iKey: prefer APPINSIGHTS_INSTRUMENTATIONKEY else parse from connection string
- $iKey = Get-AppSetting "APPINSIGHTS_INSTRUMENTATIONKEY"
- if (-not $iKey) {
     # Parse InstrumentationKey from connection string if needed
     $ikeyFromConn = ($connString -split ";") | Where-Object { $_ -like "InstrumentationKey*" }
     if ($ikeyFromConn) { $iKey = $ikeyFromConn -replace "InstrumentationKey=", "" }
- }
 
 if (-not $iKey) {
     if ($VerboseMode) { Write-Output "Telemetry: iKey missing" }
@@ -324,14 +354,15 @@ if ($runTelemetry -and -not $skipTelemetry -and -not $skipConnectivity) {
     if ($VerboseMode) {
         Write-Output "Telemetry curl (inline):"
         Write-Output $curlInline
-    Write-Output "Notes: 200=ingested 400=payload/iKey issue 405/404=head/get reachability only.`n"
-    Write-Output ("Validation query (after 1-2 min): customEvents | where timestamp > ago(1h) | where name == '{0}' | project timestamp,name,customDimensions | order by timestamp desc" -f $eventName)
+        Write-Output "Notes: 200=ingested 400=payload/iKey issue 405/404=head/get reachability only.`n"
+        Write-Output ("Validation query (after 1-2 min): customEvents | where timestamp > ago(1h) | where name == '{0}' | project timestamp,name,customDimensions | order by timestamp desc" -f $eventName)
     } else {
         Write-Output "Telemetry command: $curlInline"
         Write-Output 'Expected response JSON: {"itemsReceived":1,"itemsAccepted":1,"appId":null,"errors":[]}'
         Write-Output ("Validation query: customEvents | where timestamp > ago(1h) | where name == '{0}' | project timestamp,name,customDimensions | order by timestamp desc" -f $eventName)
     }
     Add-Log "Telemetry curl command prepared"
+
     # Execute telemetry send automatically
     $telemetryStatus = 'Pending'
     $curlTelemetryPath = Get-CurlPath
@@ -393,6 +424,7 @@ Write-Output "[Step 4/4] Sampling query + host.json samplingSettings..."
 $lookback = "ago(${SamplingLookbackHours}h)"
 $query = "union requests, dependencies, pageViews, browserTimings, exceptions, traces | where timestamp > ${lookback} | summarize RetainedPercentage = 100/avg(coalesce(itemCount,1)) by bin(timestamp, 1h), itemType"
 Write-Output "host.json samplingSettings status (evaluated first):";
+
 # Determine host.json path dynamically
 if ($HostJsonPath) {
     $hostJsonPath = $HostJsonPath
@@ -409,13 +441,14 @@ if ($HostJsonPath) {
         }
     }
     if (-not $hostJsonPath) {
-    # Fallback: script base path
+        # Fallback: script base path
         $hostJsonPath = Join-Path $basePath 'host.json'
         $hostJsonSource = 'ScriptBasePath'
     }
 }
 Write-Output ("[Info] host.json resolved from {0}: {1}" -f $hostJsonSource, $hostJsonPath)
 Add-Log ("host.json resolution source={0} path={1}" -f $hostJsonSource,$hostJsonPath)
+
 $samplingEnabled = $null
 ${hostJsonParseError} = $null
 ${hostJsonStructureIssues} = @()
@@ -428,14 +461,17 @@ if (Test-Path $hostJsonPath) {
         $trimPreview = $hostJsonContent.Substring(0,[Math]::Min(300,$hostJsonContent.Length)).Replace("`r"," ").Replace("`n"," ")
         Add-Log ("host.json head(300c)={0}" -f $trimPreview)
         $hostJsonObj = $hostJsonContent | ConvertFrom-Json -ErrorAction Stop
+
         if (-not $hostJsonObj.logging) { $hostJsonStructureIssues += 'Missing logging node'; Add-Log 'host.json structure: missing logging'; }
         if ($hostJsonObj.logging -and -not $hostJsonObj.logging.applicationInsights) { $hostJsonStructureIssues += 'Missing logging.applicationInsights node'; Add-Log 'host.json structure: missing logging.applicationInsights'; }
         if ($hostJsonObj.logging.applicationInsights -and -not $hostJsonObj.logging.applicationInsights.samplingSettings) { $hostJsonStructureIssues += 'Missing samplingSettings node'; Add-Log 'host.json structure: missing samplingSettings'; }
         if ($hostJsonStructureIssues.Count -gt 0) { Add-Log ("host.json structure issues: {0}" -f ($hostJsonStructureIssues -join '; ')) }
+
         # Detect presence of samplingSettings and isEnabled explicitly
         $hasSamplingSettingsNode = $hostJsonObj.logging.applicationInsights.samplingSettings
         $hasIsEnabledProperty = $false
         if ($hasSamplingSettingsNode) { $hasIsEnabledProperty = $hasSamplingSettingsNode.PSObject.Properties.Name -contains 'isEnabled' }
+
         if (-not $hasSamplingSettingsNode -or -not $hasIsEnabledProperty) {
             # Requirement: If samplingSettings or the isEnabled value not present, inform user sampling not set and therefore enabled by default.
             Add-Log 'samplingSettings.isEnabled missing -> default platform sampling ENABLED'
@@ -469,34 +505,34 @@ if (Test-Path $hostJsonPath) {
 if ($samplingEnabled -eq $false) {
     Write-Output "[Info] Sampling is disabled. Skipping Kusto retention query (not needed)."
 } elseif ($samplingEnabled -eq $true) {
-    Write-Output "[Action] Sampling enabled. Run Kusto query below to measure retained vs original volume and confirm impact:";
+    Write-Output "[Action] Sampling enabled. Run Kusto query below to measure retained vs original volume and confirm impact:"
     Write-Output "Kusto query (24h retention sampling assessment):"
     Write-Output $query
     Write-Output ""
-    Write-Output "Interpretation:";
-    Write-Output " - RetainedPercentage ~100: Sampling NONE (effectively full retention)";
-    Write-Output " - Drops below 100: Sampling ACTIVE (telemetry reduced)";
-    Write-Output " - Variations (e.g. 95, 97): Adaptive sampling adjusting to volume";
+    Write-Output "Interpretation:"
+    Write-Output " - RetainedPercentage ~100: Sampling NONE (effectively full retention)"
+    Write-Output " - Drops below 100: Sampling ACTIVE (telemetry reduced)"
+    Write-Output " - Variations (e.g. 95, 97): Adaptive sampling adjusting to volume"
 } else {
     # Provide nuanced messaging if parse failed vs not found; treat NotFound as assumed enabled per user request
     if ($samplingFlag -eq 'ParseFailed') {
         Write-Output ("[Info] Sampling status UNKNOWN: host.json parse failed. Error: {0}. See detailed log for head + structure diagnostics." -f ${hostJsonParseError})
     } elseif ($samplingFlag -eq 'NotFound') {
-        Write-Output "[Info] Sampling setting not found; assuming default platform sampling is ENABLED. Use retention query to confirm effective reduction.";
+        Write-Output "[Info] Sampling setting not found; assuming default platform sampling is ENABLED. Use retention query to confirm effective reduction."
         $samplingFlag = 'NotFound(AssumedEnabled)'
     } else {
-        Write-Output "[Info] Sampling status unknown; showing query for manual inspection:";
+        Write-Output "[Info] Sampling status unknown; showing query for manual inspection:"
     }
     Write-Output "Kusto query (24h retention sampling assessment):"
     Write-Output $query
     Write-Output ""
-    Write-Output "Interpretation:";
-    Write-Output " - RetainedPercentage ~100: Sampling NONE (full retention)";
-    Write-Output " - Drops below 100: Sampling ACTIVE (reduced retention)";
-    Write-Output " - Variations (e.g. 95, 97): Adaptive sampling adjusting to volume";
+    Write-Output "Interpretation:"
+    Write-Output " - RetainedPercentage ~100: Sampling NONE (full retention)"
+    Write-Output " - Drops below 100: Sampling ACTIVE (reduced retention)"
+    Write-Output " - Variations (e.g. 95, 97): Adaptive sampling adjusting to volume"
 }
 Write-Output ""
-Write-Output "To disable sampling add to host.json snippet:";
+Write-Output "To disable sampling add to host.json snippet:"
 Write-Output '{'
 Write-Output '  "logging": {'
 Write-Output '    "applicationInsights": {'
@@ -513,6 +549,11 @@ Write-Output "============================================="
 # Final Summary Box
 # ---------------------------
 Write-Output ""
+# Ensure connectivityClassification explicitly reflects the missing connection string case
+if ($skipConnectivity -and (-not $connectivityClassification -or $connectivityClassification -eq 'Skipped')) {
+    $connectivityClassification = "Skipped (no APPLICATIONINSIGHTS_CONNECTION_STRING)"
+}
+
 $summaryLines = @(
     "Configuration : $summaryConfig",
     "Connectivity  : $connectivityClassification",
@@ -540,8 +581,8 @@ $nextStepsLines = @(
 
 function Write-BlockSafe {
     param(
-        [string[]]$Lines,
-        [ConsoleColor]$Color = [ConsoleColor]::Cyan
+        [string[]] $Lines,
+        [ConsoleColor] $Color = [ConsoleColor]::Cyan
     )
     $colorSupported = $true
     # Heuristic: if host UI RawUI not present or output is redirected, avoid color
@@ -553,7 +594,7 @@ function Write-BlockSafe {
     if ($env:WEBSITE_INSTANCE_ID -and -not $Host.UI) { $colorSupported = $false }
     if (-not $colorSupported) {
         # Fallback plain output with simple ASCII marker
-        Write-Output '[Info] (Color output not supported in this host; displaying plain text block below)'        
+        Write-Output '[Info] (Color output not supported in this host; displaying plain text block below)'
         foreach ($l in $Lines) { Write-Output $l }
         return
     }
@@ -569,24 +610,28 @@ function Write-BlockSafe {
 }
 
 Write-BlockSafe -Lines $nextStepsLines -Color Cyan
+
 if ($HtmlReportResolved) {
-        $generatedUtc = (Get-Date).ToUniversalTime().ToString('u')
-        $presentList = if ($presentSettings.Count -gt 0) { $presentSettings -join ', ' } else { 'None' }
-        if ($eventName) {
-                $validationSection = @"
+    $generatedUtc = (Get-Date).ToUniversalTime().ToString('u')
+    $presentList = if ($presentSettings.Count -gt 0) { $presentSettings -join ', ' } else { 'None' }
+    if ($eventName) {
+        $validationSection = @"
 <h3>Telemetry Validation Query</h3>
 <pre><code class='kusto'>customEvents | where timestamp &gt; ago(1h) | where name == '$eventName' | project timestamp,name,customDimensions | order by timestamp desc</code></pre>
 "@
-        } else { $validationSection = '' }
-        try {
-                $logTail = Get-Content -Path $logPath -Tail 50 -ErrorAction SilentlyContinue
-                $logTailText = if ($logTail) { $logTail -join "`n" } else { '(No log content)' }
-        } catch { $logTailText = '(Failed to read log tail)' }
-        $samplingConfigured = if ($samplingFlag -is [bool]) { "Configured isEnabled: $samplingFlag" } else { '' }
-        $retentionQuery = "union requests, dependencies, pageViews, browserTimings, exceptions, traces | where timestamp > ago(${SamplingLookbackHours}h) | summarize RetainedPercentage = 100/avg(coalesce(itemCount,1)) by bin(timestamp, 1h), itemType"
-        $appNameLine = if ($AppName) { "<p><strong>App Name:</strong> $AppName</p>" } else { '' }
-        $logEscaped = ($logTailText -replace '&','&amp;') -replace '<','&lt;' -replace '>','&gt;'
-        $report = @"
+    } else { $validationSection = '' }
+
+    try {
+        $logTail = Get-Content -Path $logPath -Tail 50 -ErrorAction SilentlyContinue
+        $logTailText = if ($logTail) { $logTail -join "`n" } else { '(No log content)' }
+    } catch { $logTailText = '(Failed to read log tail)' }
+
+    $samplingConfigured = if ($samplingFlag -is [bool]) { "Configured isEnabled: $samplingFlag" } else { '' }
+    $retentionQuery = "union requests, dependencies, pageViews, browserTimings, exceptions, traces | where timestamp > ago(${SamplingLookbackHours}h) | summarize RetainedPercentage = 100/avg(coalesce(itemCount,1)) by bin(timestamp, 1h), itemType"
+    $appNameLine = if ($AppName) { "<p><strong>App Name:</strong> $AppName</p>" } else { '' }
+    $logEscaped = ($logTailText -replace '&','&amp;') -replace '<','&lt;' -replace '>','&gt;'
+
+    $report = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -663,11 +708,13 @@ if ($HtmlReportResolved) {
 </body>
 </html>
 "@
-        try {
-                Set-Content -Path $HtmlReportResolved -Value $report -Encoding UTF8
-                Write-Output ("[Info] HTML report saved: {0}" -f $HtmlReportResolved)
-        } catch {
-                Write-Output ("[WARN] Failed to write HTML report: {0}" -f $_)
-        }
+
+    try {
+        Set-Content -Path $HtmlReportResolved -Value $report -Encoding UTF8
+        Write-Output ("[Info] HTML report saved: {0}" -f $HtmlReportResolved)
+    } catch {
+        Write-Output ("[WARN] Failed to write HTML report: {0}" -f $_)
+    }
 }
+
 exit 0
