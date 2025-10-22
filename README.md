@@ -2,7 +2,7 @@
 
 Minimal script to validate Application Insights telemetry for Azure Functions / App Service.
 
-> Hosting plan support: Works on Windows & Linux Dedicated, Premium, and Elastic Premium plans, plus Windows Consumption. Not supported on **Linux Consumption** or **Flex Consumption** plans (Kudu / required console features unavailable there).
+> Hosting plan support: Works on Windows & Linux Dedicated,  and Elastic Premium plans, plus Windows Consumption. Not supported on **Linux Consumption** or **Flex Consumption** plans (Kudu / required console features unavailable there).
 
 ## What It Does
 1. Checks config (connection string vs legacy iKey)
@@ -26,7 +26,7 @@ Minimal script to validate Application Insights telemetry for Azure Functions / 
 	```
 5. Locate the new `Application Insights Diagnostic` folder, download the HTML report.
 
-### Linux (Bash Console — Dedicated / Premium / Elastic Premium only)
+### Linux (Bash Console — Dedicated / Elastic Premium only)
 1. Download `appinsights_diag.sh` locally.
 2. Open: `https://<sitename>.scm.azurewebsites.net/newui/fileManager` 
 3. Drag & drop `appinsights_diag.sh` into `home`.
