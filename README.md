@@ -1,4 +1,4 @@
-# AppInsightsDiag.ps1 (Application Insights Diagnostics)
+# Application Insights Diagnostics
 
 Minimal script to validate Application Insights telemetry for Azure Functions / App Service.
 
