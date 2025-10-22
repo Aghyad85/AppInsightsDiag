@@ -1,105 +1,137 @@
 # Application Insights Diagnostics
 
-Minimal script to validate Application Insights telemetry for Azure Functions / App Service.
+Minimal diagnostic script to validate **Application Insights telemetry** for **Azure Functions** or **App Service**.
 
-> Hosting plan support: Works on Windows & Linux Dedicated,  and Elastic Premium plans, plus Windows Consumption. Not supported on **Linux Consumption** or **Flex Consumption** plans (Kudu / required console features unavailable there).
+> ✅ **Supported Hosting Plans:**
+>
+> * Windows & Linux Dedicated
+> * Windows & Linux Elastic Premium
+> * Windows Consumption
+>   ⚠️ **Not supported:** Linux Consumption or Flex Consumption (Kudu/console not available).
 
-## What It Does
-1. Checks config (connection string vs legacy iKey)
-2. Tests ingestion endpoint reachability
-3. Sends a small custom event
-4. Detects sampling settings from host.json
-5. Generates HTML report + redacted log
-6. Points to portal detectors
+---
 
+## Overview
 
-## Run From Kudu (Azure App Service / Functions)
+This tool provides quick validation of Application Insights configuration and telemetry flow for your Function App or App Service.
 
-### Windows (PowerShell Console)
-1. Download `AppInsightsDiag.ps1` locally.
-2. Open: `https://<sitename>.scm.azurewebsites.net/DebugConsole/?shell=powershell`
-3. Drag & drop `AppInsightsDiag.ps1` into the Kudu file pane (e.g. `/site/wwwroot`).
-4. In the Kudu PowerShell console, execute:
+### Key Capabilities
 
-	```powershell
-	./AppInsightsDiag.ps1
-	```
-5. Locate the new `Application Insights Diagnostic` folder, download the HTML report.
+* ✅ Validates configuration (Connection String vs. legacy iKey)
+* ✅ Tests reachability of the ingestion endpoint
+* ✅ Sends a small custom event and validates telemetry ingestion
+* ✅ Detects Application Insights sampling settings from `host.json` and provides a Kusto query to assess telemetry retention
+* ✅ Generates an HTML report and redacted log
+* ✅ Links to relevant portal detectors
 
-### Linux (Bash Console — Dedicated / Elastic Premium only)
-1. Download `appinsights_diag.sh` locally.
-2. Open: `https://<sitename>.scm.azurewebsites.net/newui/fileManager` 
-3. Drag & drop `appinsights_diag.sh` into `home`.
-4. go to SSH then chose SSH to Kudu.
-5. Run it (default is verbose mode):
+---
 
-```bash
-./appinsights_diag.sh
-```
+## Running from Kudu Console
 
-Quiet (minimal) output:
+### 🪟 Windows (PowerShell Console)
 
-```bash
-./appinsights_diag.sh --quiet
-```
+1. Download `AppInsightsDiag.ps1` locally
+2. Navigate to:
+   `https://<sitename>.scm.azurewebsites.net/DebugConsole/?shell=powershell`
+3. Upload the script (e.g., to `/site/wwwroot`)
+4. Run in PowerShell console:
 
-Full mode (adds environment snapshot + all guidance):
+   ```powershell
+   ./AppInsightsDiag.ps1
+   ```
+5. A new folder **Application Insights Diagnostic** is created.
+   Download the **HTML report** from there.
 
-```bash
-./appinsights_diag.sh --full
-```
-7. Download the HTML report & log from `Application Insights Diagnostic` directory.
-8. (Not supported on Linux Consumption / Flex Consumption — no Kudu shell there.)
+---
 
-Linux flags (summary):
+### 🐧 Linux (Bash Console – Dedicated / Elastic Premium only)
 
-| Flag | Purpose |
-|------|---------|
-| (default) | Verbose guidance enabled |
-| `--quiet` / `-q` | Minimal output (suppress guidance lines) |
-| `--full` / `-F` | Full mode (verbose + extra environment snapshot) |
-| `--output-dir <dir>` | Custom output directory |
-| `--report <file>` | Custom HTML report path/name |
-| `--site-path <rel>` | Change silent GET relative path (default `/AppInsightsDiag`) |
-| `--disable-site-ping` | Skip silent site reachability GET |
-| `--no-redact` | Do not redact connection string / iKey in log |
-| `--verbose` / `-v` | (Redundant now) explicitly set verbose |
+1. Download `appinsights_diag.sh` locally
+2. Navigate to:
+   `https://<sitename>.scm.azurewebsites.net/newui/fileManager`
+3. Upload the script to the `home` directory
+4. Open **SSH → SSH to Kudu**
+5. Run the script (verbose by default):
 
-Example combined usage:
+   ```bash
+   ./appinsights_diag.sh
+   ```
+
+<details>
+<summary>Output Modes</summary>
+
+| Mode      | Command                         | Description                                     |
+| --------- | ------------------------------- | ----------------------------------------------- |
+| ✅ Default | `./appinsights_diag.sh`         | Verbose output with guidance                    |
+| ⚠️ Quiet  | `./appinsights_diag.sh --quiet` | Minimal console output                          |
+| ✅ Full    | `./appinsights_diag.sh --full`  | Adds environment snapshot and extended guidance |
+
+After execution, download the HTML report and log from the **Application Insights Diagnostic** directory.
+
+> ⚠️ Not supported on **Linux Consumption** or **Flex Consumption** — Kudu shell not available.
+
+</details>
+
+<details>
+<summary>Linux Flags Summary</summary>
+
+| Flag                  | Purpose                                                   |
+| --------------------- | --------------------------------------------------------- |
+| *(default)*           | Verbose mode                                              |
+| `--quiet`, `-q`       | Minimal output                                            |
+| `--full`, `-F`        | Full mode with environment snapshot                       |
+| `--output-dir <dir>`  | Custom output directory                                   |
+| `--report <file>`     | Custom report path/name                                   |
+| `--site-path <rel>`   | Relative path for silent GET (default `/AppInsightsDiag`) |
+| `--disable-site-ping` | Skip site reachability test                               |
+| `--no-redact`         | Disable redaction of secrets in log                       |
+| `--verbose`, `-v`     | Explicitly enable verbose (redundant)                     |
+
+**Example combined usage:**
 
 ```bash
 ./appinsights_diag.sh --full --output-dir diag_out --report /home/site/wwwroot/ai-linux.html --site-path /PingStats --disable-site-ping
 ```
 
+</details>
 
-## Troubleshooting (Quick)
+---
 
-| Issue | Hint |
-|-------|------|
-| 404 connectivity | Wrong ingestion endpoint region. |
-| Telemetry HTTP 400 | Bad JSON or old iKey usage. |
-| Sampling ParseFailed | Invalid host.json. |
-| Missing config | Add APPLICATIONINSIGHTS_CONNECTION_STRING. |
+## Troubleshooting Quick Reference
 
+| Issue                       | Possible Cause                                  |
+| --------------------------- | ----------------------------------------------- |
+| ⚠️ **404 connectivity**     | Incorrect ingestion endpoint region             |
+| ❌ **Telemetry HTTP 400**    | Malformed payload or legacy iKey usage          |
+| ⚠️ **Sampling ParseFailed** | Invalid or malformed `host.json`                |
+| ⚠️ **Missing config**       | Missing `APPLICATIONINSIGHTS_CONNECTION_STRING` |
 
-## Status Cheat Sheet
+---
 
-* **Configuration**: OK | Both exist | `iKey` only | Missing
-* **Connectivity**: Reachable | `NotFound` (404) | Status:{CODE} | Error
-* **Telemetry**: HTTP 200 Rec:1 Acc:1 Err:0 = success (else inspect body)
-* `SamplingFlag`: True | False | `NotFound` | `ParseFailed` | `ImplicitDefaultEnabled`
+## Status Indicators
 
-`ImplicitDefaultEnabled` means no explicit `samplingSettings.isEnabled` value was found in `host.json` (either the `samplingSettings` node or the `isEnabled` property is absent). In this case the platform's default Application Insights sampling is active (enabled) automatically.
+| Category            | Possible Values                                                |
+| ------------------- | -------------------------------------------------------------- |
+| ✅ **Configuration** | OK · Both exist · iKey only · Missing                          |
+| ✅ **Connectivity**  | Reachable · NotFound (404) · Status:{CODE} · Error             |
+| ✅ **Telemetry**     | HTTP 200 Rec:1 Acc:1 Err:0 → success                           |
+| ⚠️ **SamplingFlag** | True · False · NotFound · ParseFailed · ImplicitDefaultEnabled |
 
-## Kusto Snippets
+> ⚠️ `ImplicitDefaultEnabled` indicates that `samplingSettings.isEnabled` was **not explicitly set** in `host.json`.
+> Sampling is **enabled by default** in this case.
 
-Event validation:
+<details>
+<summary>Sampling Detection Details</summary>
 
-```kusto
-customEvents | where timestamp > ago(1h) | where name == 'curlConnectivityTestEvent-<GUID>'
-```
+| Condition                                 | SamplingFlag             | Interpretation                |
+| ----------------------------------------- | ------------------------ | ----------------------------- |
+| Missing `samplingSettings` or `isEnabled` | `ImplicitDefaultEnabled` | Sampling active by default    |
+| `"isEnabled": true`                       | `True`                   | Sampling explicitly enabled   |
+| `"isEnabled": false`                      | `False`                  | Sampling disabled             |
+| Parse error                               | `ParseFailed`            | Invalid JSON                  |
+| File missing                              | `NotFound`               | Treated as enabled by default |
 
-Sampling retention:
+**Kusto Retention Query**
 
 ```kusto
 union requests, dependencies, pageViews, browserTimings, exceptions, traces
@@ -107,7 +139,55 @@ union requests, dependencies, pageViews, browserTimings, exceptions, traces
 | summarize RetainedPercentage = 100/avg(coalesce(itemCount,1)) by bin(timestamp,1h), itemType
 ```
 
-## Common Options
+**Interpretation:**
+
+* ≈100 → Full retention, no sampling
+* <100 → Sampling active (reduced telemetry)
+* Fluctuating 90–99 → Adaptive sampling
+
+**To disable sampling explicitly**, add to `host.json`:
+
+```json
+{
+  "logging": {
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": false
+      }
+    }
+  }
+}
+```
+
+</details>
+
+---
+
+<details>
+<summary>Kusto Snippets</summary>
+
+**Event validation**
+
+```kusto
+customEvents
+| where timestamp > ago(1h)
+| where name == 'curlConnectivityTestEvent-<GUID>'
+```
+
+**Sampling retention**
+
+```kusto
+union requests, dependencies, pageViews, browserTimings, exceptions, traces
+| where timestamp > ago(24h)
+| summarize RetainedPercentage = 100/avg(coalesce(itemCount,1)) by bin(timestamp,1h), itemType
+```
+
+</details>
+
+---
+
+<details>
+<summary>Common PowerShell Options</summary>
 
 ```powershell
 ./AppInsightsDiag.ps1 -VerboseMode
@@ -115,16 +195,36 @@ union requests, dependencies, pageViews, browserTimings, exceptions, traces
 ./AppInsightsDiag.ps1 -HostJsonPath C:\home\site\wwwroot\host.json
 ```
 
+</details>
+
+---
+
 ## Portal Detector
 
-Portal → Function App → Diagnose and solve problems → Run **Function App Missing Telemetry in Application Insights** (optional **Open Telemetry**).
+**Azure Portal → Function App → Diagnose and solve problems →**
+Run **Function App Missing Telemetry in Application Insights** (or **OpenTelemetry** detector if applicable).
 
-## Security
+---
 
-Instrumentation Key & Connection String redacted in log.
+## Security and Privacy
 
-This script also issues a silent GET request to the relative path `/AppInsightsDiag`  purely for internal statistics / reachability tracking. A `404` response is expected and classified as `Expected404`; no response body is stored, and this call does not affect Application Insights telemetry or expose secrets.
+* 🔒 Connection strings and instrumentation keys are **redacted** in logs
+* 🔒 Script performs a **silent GET** to `/AppInsightsDiag` for reachability only
 
-## Support / Escalation
+  * Expected response: **404 (Expected404)**
+  * No secret data or response body is stored
+  * Does **not** affect telemetry or leak sensitive info
 
-If issues persist after using this script and the portal detector, open an Azure Support request and attach the generated HTML report (in the `Application Insights Diagnostic` folder or the path from `-HtmlReportPath`) plus the redacted log for faster triage.
+---
+
+## Support & Escalation
+
+If issues persist after running the script and portal detector:
+
+* Open **Azure Support** request
+* Attach:
+
+  * ✅ Generated **HTML report** (`Application Insights Diagnostic` folder or custom path)
+  * ✅ Redacted log file
+
+These artifacts help accelerate triage and resolution.
