@@ -202,7 +202,7 @@ union requests, dependencies, pageViews, browserTimings, exceptions, traces
 ## Portal Detector
 
 **Azure Portal → Function App → Diagnose and solve problems →**
-Run **Function App Missing Telemetry in Application Insights** (or **OpenTelemetry** detector if applicable).
+Run **Function App Missing Telemetry in Application Insights / OpenTelemetry** detector .
 
 ---
 
