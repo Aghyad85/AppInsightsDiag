@@ -167,16 +167,18 @@ APP_NAME="${WEBSITE_SITE_NAME:-}"; RESOURCE_GROUP="${WEBSITE_RESOURCE_GROUP:-}";
 log "AppName=$APP_NAME ResourceGroup=$RESOURCE_GROUP"
 out "=== Application Insights Diagnostic (Linux) ==="
 out "Expanded step list:"
-out "  Step 1) Configuration status detection"
-out "  Step 2) Connectivity curl command"
-out "  Step 3) Telemetry send + validation query"
-out "  Step 4) Sampling query + host.json samplingSettings"
+out "  1) Configuration status detection"
+out "  2) Connectivity curl command"
+out "  3) Telemetry send + validation query"
+out "  4) Sampling query + host.json samplingSettings"
+out "  5) Worker runtime guidance"
 out "============================================="
 out "Start (UTC): $SCRIPT_START_UTC"
 out "Output directory: $OUTPUT_DIR"
 
 CONN_STRING="${APPLICATIONINSIGHTS_CONNECTION_STRING:-}"; IKEY="${APPINSIGHTS_INSTRUMENTATIONKEY:-}";
 CONFIG_STATUS="Missing"
+verb "[Step 1] Starting configuration detection"
 if [[ -n "$CONN_STRING" && -n "$IKEY" ]]; then CONFIG_STATUS="Both exist (remove APPINSIGHTS_INSTRUMENTATIONKEY, keep APPLICATIONINSIGHTS_CONNECTION_STRING)";
 elif [[ -n "$IKEY" ]]; then CONFIG_STATUS="APPINSIGHTS_INSTRUMENTATIONKEY only (migrate)";
 elif [[ -n "$CONN_STRING" ]]; then CONFIG_STATUS="OK"; fi
@@ -194,6 +196,9 @@ if [[ -z "$CONN_STRING" ]]; then
 else
   MISSING_CONFIG=0
 fi
+
+# Step 1 complete separator
+out "============================================="
 
 # Silent site ping
 SITE_STATUS="Skipped"
@@ -218,6 +223,7 @@ CONNECTIVITY_CLASS="Skipped"
 INGEST_ENDPOINT=""
 EXIT_CODE=0
 if [[ $MISSING_CONFIG -eq 0 ]]; then
+  verb "[Step 2] Starting connectivity check"
   INGEST_ENDPOINT=$(extract_from_conn "IngestionEndpoint" "$CONN_STRING")
   [[ -n "$INGEST_ENDPOINT" ]] && INGEST_ENDPOINT="${INGEST_ENDPOINT%/}"
   if [[ -z "$INGEST_ENDPOINT" ]]; then
@@ -237,12 +243,16 @@ if [[ $MISSING_CONFIG -eq 0 ]]; then
   fi
 fi
 
+# Step 2 complete separator (connectivity phase)
+out "============================================="
+
 ###############################################
 # Step 3: Telemetry send + validation query
 ###############################################
 EVENT_RESULT="Skipped"
 EVENT_NAME=""
 if [[ $MISSING_CONFIG -eq 0 && "$CONNECTIVITY_CLASS" == "Reachable" ]]; then
+  verb "[Step 3] Sending telemetry payload"
   if [[ -z "$IKEY" ]]; then IKEY=$(extract_from_conn "InstrumentationKey" "$CONN_STRING" || true); fi
   if [[ -n "$IKEY" ]]; then
     EVENT_ID=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)
@@ -312,9 +322,25 @@ if [[ $MISSING_CONFIG -eq 0 && "$CONNECTIVITY_CLASS" == "Reachable" ]]; then
   fi
 fi
 
+# Step 3 complete separator (telemetry phase)
+out "============================================="
+
 ###############################################
-# Step 4: Sampling query + host.json samplingSettings
+# Step 4: Sampling query + host.json samplingSettings (with runtime override)
 ###############################################
+# Runtime override detection using LINUX_FX_VERSION (linux functions runtime string)
+verb "[Step 4] Evaluating sampling + host.json"
+RUNTIME_VALUE="${LINUX_FX_VERSION:-}"  # Example patterns: DOTNET-ISOLATED|8.0, JAVA|17, JAVA|11, DOTNET|8.0
+RUNTIME_OVERRIDE=0
+if [[ -n "$RUNTIME_VALUE" ]]; then
+  rt_lower=$(echo "$RUNTIME_VALUE" | tr '[:upper:]' '[:lower:]')
+  if echo "$rt_lower" | grep -q 'java'; then RUNTIME_OVERRIDE=1; fi
+  if echo "$rt_lower" | grep -q 'dotnet-isolated'; then RUNTIME_OVERRIDE=1; fi
+fi
+if [[ $RUNTIME_OVERRIDE -eq 1 ]]; then
+  out "[Runtime] LINUX_FX_VERSION='$RUNTIME_VALUE' indicates code-managed telemetry & sampling (host.json samplingSettings not applicable)."
+  out "Reference: https://learn.microsoft.com/en-us/troubleshoot/azure/azure-functions/monitoring/functions-monitoring-appinsightslogs#custom-application-logs"
+fi
 SAMPLING_FLAG="NotFound"
 HOST_JSON_PARSE_ERROR=""
 
@@ -322,10 +348,7 @@ HOST_JSON_PARSE_ERROR=""
 declare -a HOST_JSON_CANDIDATES
 if [[ -n "$HOST_JSON_OVERRIDE" ]]; then HOST_JSON_CANDIDATES+=("$HOST_JSON_OVERRIDE"); fi
 HOST_JSON_CANDIDATES+=(
-  "/home/site/wwwroot/host.json" \
-  "/home/site/host.json" \
-  "./host.json" \
-  "../host.json"
+  "/home/site/wwwroot/host.json" 
 )
 
 FOUND_HOST_JSON=""
@@ -341,7 +364,12 @@ if [[ -z "$FOUND_HOST_JSON" && -z "$HOST_JSON_OVERRIDE" ]]; then
   fi
 fi
 
-if [[ -n "$FOUND_HOST_JSON" ]]; then
+if [[ $RUNTIME_OVERRIDE -eq 1 ]]; then
+  # Skip host.json parsing entirely for code-managed runtimes
+  SAMPLING_FLAG="CodeManaged"
+  out "Sampling host.json path: (skipped for runtime override)"
+else
+  if [[ -n "$FOUND_HOST_JSON" ]]; then
   HOST_JSON="$FOUND_HOST_JSON"
   out "Sampling host.json path: $HOST_JSON"
   SIZE=$(stat -c %s "$HOST_JSON" 2>/dev/null || echo 0)
@@ -365,9 +393,10 @@ if [[ -n "$FOUND_HOST_JSON" ]]; then
     elif echo "$LINE" | grep -qi 'true'; then SAMPLING_FLAG="true";
     elif [[ -n "$LINE" ]]; then SAMPLING_FLAG="ParseFailed"; HOST_JSON_PARSE_ERROR="Could not parse boolean from line: $LINE"; [[ $EXIT_CODE -eq 0 ]] && EXIT_CODE=5; fi
   fi
-else
-  out "Sampling host.json path: (not found)"
-  SAMPLING_FLAG="NotFound"
+  else
+    out "Sampling host.json path: (not found)"
+    SAMPLING_FLAG="NotFound"
+  fi
 fi
 
 out "SamplingFlag: $SAMPLING_FLAG"
@@ -378,6 +407,8 @@ elif [[ "$SAMPLING_FLAG" == "false" ]]; then
   verb "[Info] Sampling disabled -> retention full; skipping retention impact guidance."
 elif [[ "$SAMPLING_FLAG" == "true" ]]; then
   out "[Action] Sampling enabled. Use retention query below to measure retained vs original volume."
+elif [[ "$SAMPLING_FLAG" == "CodeManaged" ]]; then
+  out "[Info] Runtime override: sampling & logging configured in code. Host.json snippet suppressed."
 else
   # Treat NotFound (unspecified) as assumed enabled per user request
   if [[ "$SAMPLING_FLAG" == "NotFound" ]]; then
@@ -388,9 +419,31 @@ else
   fi
 fi
 
+# Step 4 complete separator (sampling evaluation)
+out "============================================="
+
 # Decide HTML report name if omitted
 if [[ -z "$HTML_REPORT" ]]; then HTML_REPORT="AI-Diagnostic-Report-$(date -u +"%Y%m%d-%H%M%S").html"; fi
+verb "[Step 5] Generating HTML report and runtime guidance section"
 REPORT_PATH="$OUTPUT_DIR/$HTML_REPORT"
+
+# Prepare additional report context variables
+REPORT_EVENT_NAME="$EVENT_NAME"
+REPORT_INGEST_ENDPOINT="$INGEST_ENDPOINT"
+if [[ $CONNECTIVITY_CLASS == "Reachable" && -n "$REPORT_INGEST_ENDPOINT" ]]; then
+  if [[ ${AVAILABILITY_MODE:-0} -eq 1 ]]; then
+    REPORT_TRACK_URL="${REPORT_INGEST_ENDPOINT}/v2.1/track"
+  else
+    REPORT_TRACK_URL="${REPORT_INGEST_ENDPOINT}/v2/track"
+  fi
+else
+  REPORT_TRACK_URL="(not established)"
+fi
+if [[ ${HIDE_PAYLOAD:-0} -eq 1 ]]; then
+  HTML_TELEM_PAYLOAD="[REDACTED_OBJECT]"
+else
+  HTML_TELEM_PAYLOAD="${JSON_PAYLOAD:-'(not generated)'}"
+fi
 
 # Redaction
 if [[ $REDACT -eq 1 ]]; then
@@ -406,6 +459,9 @@ else
 fi
 
 tail_sanitized() { tail -n 50 "$LOG_PATH" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
+
+DISABLE_SNIPPET='<h3>Disable Sampling Snippet</h3>\n    <pre><code class="json">{\n  "logging": {\n    "applicationInsights": {\n      "samplingSettings": {\n        "isEnabled": false\n      }\n    }\n  }\n}</code></pre>'
+SAMPLING_EXTRA_MSG=""
 
 cat > "$REPORT_PATH" <<EOF
 <!DOCTYPE html>
@@ -430,27 +486,63 @@ cat > "$REPORT_PATH" <<EOF
   <h1>Application Insights Diagnostic Report (Linux)</h1>
   <p><strong>Generated (UTC):</strong> $SCRIPT_START_UTC</p>
   <div class="section">
-    <h2>Summary</h2>
+  <h2>Step 1: Configuration Summary</h2>
     <table>
       <tr><th>Category</th><th>Status</th></tr>
       <tr><td>Configuration</td><td>$CONFIG_STATUS</td></tr>
       <tr><td>Connectivity</td><td>$CONNECTIVITY_CLASS</td></tr>
       <tr><td>Telemetry</td><td>$EVENT_RESULT</td></tr>
-      <tr><td>SamplingFlag</td><td>$SAMPLING_FLAG</td></tr>
+  <tr><td>SamplingFlag</td><td>$( [[ "$SAMPLING_FLAG" == "CodeManaged" ]] && echo "CodeManaged (not via host.json)" || echo "$SAMPLING_FLAG" )</td></tr>
+  <tr><td>Runtime</td><td>$( [[ $RUNTIME_OVERRIDE -eq 1 ]] && echo "${RUNTIME_VALUE:-'(unset)'} CodeManaged (not via host.json)" || echo "${RUNTIME_VALUE:-'(unset)'}" )</td></tr>
     </table>
+    <p><strong>Guidance:</strong> $( [[ "$CONFIG_STATUS" == "OK" ]] && echo "Connection string detected." || echo "If legacy instrumentation key present, migrate to connection string." )</p>
   </div>
   <div class="section">
-  <h2>Telemetry Validation Query</h2>
+    <h2>Step 2: Connectivity</h2>
+    <p>Status: <strong>$CONNECTIVITY_CLASS</strong></p>
+    <p>Ingestion Endpoint: <code>${REPORT_INGEST_ENDPOINT:-'(unset)'}</code></p>
+    <p>Track URL: <code>${REPORT_TRACK_URL}</code></p>
+    $( [[ $CONNECTIVITY_CLASS == "Reachable" ]] && echo "<p>Reachable: HTTP 200/405 indicates endpoint responsive.</p>" || echo "<p>Non-reachable or error: verify networking, firewall, or connection string correctness.</p>" )
+  </div>
+  <div class="section">
+  <h2>Step 3: Telemetry Send & Validation</h2>
+  <p>Event Name: <code>${REPORT_EVENT_NAME:-'(none)'}$( [[ ${AVAILABILITY_MODE:-0} -eq 1 ]] && echo " (AvailabilityData)" )</code></p>
+  <p>Payload (inline): <code>${HTML_TELEM_PAYLOAD}</code></p>
   <pre><code class='kusto'>$VALIDATION_QUERY</code></pre>
   </div>
   <div class="section">
-    <h2>Sampling</h2>
-    <p>Sampling flag: $SAMPLING_FLAG</p>
+  <h2>Step 4: Sampling</h2>
+  <p>Sampling flag: $( [[ "$SAMPLING_FLAG" == "CodeManaged" ]] && echo "CodeManaged (not via host.json)" || echo "$SAMPLING_FLAG" )</p>
     <h3>Retention query (24h window)</h3>
     <pre><code class='kusto'>$RETENTION_QUERY</code></pre>
     <p><em>Interpretation:</em> RetainedPercentage ~100 =&gt; none/zero sampling; &lt;100 =&gt; sampling active; fluctuating =&gt; adaptive sampling.</p>
-    <h3>Disable Sampling Snippet</h3>
-    <pre><code class='json'>{
+    $( [[ "$SAMPLING_FLAG" == "CodeManaged" ]] && echo "<p><strong>Runtime override:</strong> Configure sampling & logging in application code for this worker runtime. See <a href=\"https://learn.microsoft.com/en-us/troubleshoot/azure/azure-functions/monitoring/functions-monitoring-appinsightslogs#custom-application-logs\" target=\"_blank\">guidance</a>.</p>" || echo "$DISABLE_SNIPPET" )
+  </div>
+  <div class="section">
+  <h2>Step 5: Worker Runtime Guidance</h2>
+    <p>LINUX_FX_VERSION: ${RUNTIME_VALUE:-'(unset)'}</p>
+    $( if [[ $RUNTIME_OVERRIDE -eq 1 ]]; then cat <<'RHTML'
+<p><strong>Guidance:</strong> For this runtime, sampling & custom logs are configured in application code; host.json samplingSettings is ignored.</p>
+<h3>.NET isolated example: disable adaptive sampling</h3>
+<pre><code class='csharp'>// Program.cs (.NET isolated)
+builder.Services.AddApplicationInsightsTelemetryWorkerService(options => {
+    options.EnableAdaptiveSampling = false; // disables adaptive sampling
+});
+// Additional telemetry processors / initializers can be added via DI.
+</code></pre>
+<h3>Java example: remove sampling processor</h3>
+<pre><code class='java'>TelemetryConfiguration config = TelemetryConfiguration.getActive();
+config.getTelemetryProcessors()
+      .removeIf(p -> p.getClass().getSimpleName().equals("AdaptiveSamplingTelemetryProcessor"));
+// Spring Boot starter alternative:
+// azure.application-insights.enable-adaptive-sampling=false
+</code></pre>
+<p>After disabling, RetainedPercentage in the retention query should remain ~100 indicating full retention.</p>
+<p>Reference: <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/azure-functions/monitoring/functions-monitoring-appinsightslogs#custom-application-logs" target="_blank">Custom application logs guidance</a>.</p>
+RHTML
+else cat <<'RHTML'
+<p>Host.json samplingSettings apply for this runtime. To disable sampling add:</p>
+<pre><code class='json'>{
   "logging": {
     "applicationInsights": {
       "samplingSettings": {
@@ -459,17 +551,20 @@ cat > "$REPORT_PATH" <<EOF
     }
   }
 }</code></pre>
+<p>Restart the Function App after editing host.json then confirm RetainedPercentage ~100 (no sampling).</p>
+RHTML
+fi )
   </div>
   <div class="section">
-    <h2>Redacted Log (tail)</h2>
+  <h2>Auxiliary: Redacted Log (tail)</h2>
     <pre><code class='text'>$(tail_sanitized)</code></pre>
   </div>
   <div class="section">
-    <h2>Silent Site GET</h2>
+  <h2>Auxiliary: Silent Site GET</h2>
     <p>Classification: $SITE_STATUS (path: $SITE_RELATIVE_PATH)</p>
   </div>
   <div class="section callout">
-    <h2>Next Steps: Portal Detectors</h2>
+  <h2>Next Steps: Portal Detectors</h2>
     <ol>
       <li><strong>Azure Portal</strong> → Open your Function App.</li>
       <li>Go to <strong>Diagnose and solve problems</strong>.</li>
@@ -487,6 +582,9 @@ EOF
 out "[Info] HTML report saved: $REPORT_PATH"
 out "[Info] Detailed log saved: $LOG_PATH"
 
+# Step 5 complete separator (report generation)
+out "============================================="
+
 cat <<'NEXT'
 ================ NEXT STEPS (Linux) ================
 Portal: Function App -> Diagnose and solve problems -> Run "Function App Missing Telemetry" detector.
@@ -499,11 +597,23 @@ if [[ $MISSING_CONFIG -eq 1 ]]; then EXIT_CODE=2; fi
 ###############################################
 # Summary box (terminal)
 ###############################################
+if [[ "$SAMPLING_FLAG" == "CodeManaged" ]]; then
+  SUMMARY_SAMPLING="CodeManaged (not via host.json)"
+else
+  SUMMARY_SAMPLING="$SAMPLING_FLAG"
+fi
+# Show full LINUX_FX_VERSION (including version) in summary instead of normalized language token
+if [[ $RUNTIME_OVERRIDE -eq 1 ]]; then
+  SUMMARY_RUNTIME="${RUNTIME_VALUE:-'(unset)'} CodeManaged (not via host.json)"
+else
+  SUMMARY_RUNTIME="${RUNTIME_VALUE:-'(unset)'}"
+fi
 SUM_LINES=(
   "Configuration : $CONFIG_STATUS"
   "Connectivity  : $CONNECTIVITY_CLASS"
   "Telemetry     : $EVENT_RESULT"
-  "SamplingFlag  : $SAMPLING_FLAG"
+  "SamplingFlag  : $SUMMARY_SAMPLING"
+  "Runtime       : $SUMMARY_RUNTIME"
 )
 maxlen=0
 for l in "${SUM_LINES[@]}"; do [[ ${#l} -gt $maxlen ]] && maxlen=${#l}; done

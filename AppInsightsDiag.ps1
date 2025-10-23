@@ -12,11 +12,12 @@ $basePath = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 
 # Application Insights Diagnostic Script (auto-runs all steps)
 Write-Output "=== Application Insights Diagnostic Script ==="
-Write-Output "Expanded step list:"
-Write-Output "  Step 1) Configuration status detection"
-Write-Output "  Step 2) Connectivity curl command"
-Write-Output "  Step 3) Telemetry send + validation query"
-Write-Output "  Step 4) Sampling query + host.json samplingSettings"
+Write-Output "Expanded step list:" 
+Write-Output "  Step 1) Configuration status detection" 
+Write-Output "  Step 2) Connectivity curl command" 
+Write-Output "  Step 3) Telemetry send + validation query" 
+Write-Output "  Step 4) Sampling query (host.json where applicable)" 
+Write-Output "  Step 5) Worker runtime guidance"
 Write-Output "============================================="
 #  Write-Output ("[Info] Script base path: {0}" -f $basePath)
 
@@ -103,7 +104,7 @@ function Get-AppSetting([string] $name) { (Get-Item -Path "Env:$name" -ErrorActi
 $runConfig = $true; $runSiteEndpoint = $true; $runConnectivity = $true; $runTelemetry = $true; $runSampling = $true
 $SamplingLookbackHours = 24
 
-if ($VerboseMode -and $runConfig) { Write-Output "[Step 1/4] Configuration status detection (verbose)" } else { Write-Output "[Step 1/4] Configuration status detection..." }
+if ($VerboseMode -and $runConfig) { Write-Output "[Step 1/5] Configuration status detection (verbose)" } else { Write-Output "[Step 1/5] Configuration status detection..." }
 
 $hasInstrumentationKey = -not [string]::IsNullOrWhiteSpace((Get-AppSetting "APPINSIGHTS_INSTRUMENTATIONKEY"))
 $hasConnectionString  = -not [string]::IsNullOrWhiteSpace((Get-AppSetting "APPLICATIONINSIGHTS_CONNECTION_STRING"))
@@ -152,7 +153,7 @@ if (-not $curlNativePath) {
 if ($runConnectivity) {
     Add-Log "Connectivity section pending"
 } else {
-    Write-Output "[Step 2/4] Skip Connectivity test command as APPLICATIONINSIGHTS_CONNECTION_STRING is missing ..."
+    Write-Output "[Step 2/5] Skip Connectivity test command as APPLICATIONINSIGHTS_CONNECTION_STRING is missing ..."
     Add-Log "Connectivity section skipped (runConnectivity=false)"
 }
 
@@ -226,7 +227,7 @@ if ($runConnectivity -and -not $skipConnectivity) {
         Write-Output "`n2. *******Connectivity Check.*******"
         Write-Output "NOTE: Run the curl below in Kudu (console) for in-app verification."
     } else {
-        Write-Output "[Step 2/4] Connectivity test command..."
+    Write-Output "[Step 2/5] Connectivity test command..."
     }
     Add-Log "Connectivity section"
 }
@@ -293,9 +294,9 @@ if (-not $skipConnectivity) {
 }
 
 if ($runTelemetry -and -not $skipConnectivity -and -not $skipTelemetry) {
-    if ($VerboseMode) { Write-Output "`n3. *******Send Minimal Telemetry (curl)*******" } else { Write-Output "[Step 3/4] Telemetry send + validation query..." }
+    if ($VerboseMode) { Write-Output "`n3. *******Send Minimal Telemetry (curl)*******" } else { Write-Output "[Step 3/5] Telemetry send + validation query..." }
 } else {
-    Write-Output "[Step 3/4] Skipping Telemetry send + validation query as APPLICATIONINSIGHTS_CONNECTION_STRING is missing ..."
+    Write-Output "[Step 3/5] Skipping Telemetry send + validation query as APPLICATIONINSIGHTS_CONNECTION_STRING is missing ..."
 }
 
 # Find iKey: prefer APPINSIGHTS_INSTRUMENTATIONKEY else parse from connection string
@@ -420,39 +421,51 @@ Set-Content -Path $logPath -Value ($sanitized -join "`n") -Encoding UTF8
 ## Removed early detailed log path output per user request; shown only in final summary now.
 
 # Step 4: Combined sampling query + host.json samplingSettings
-Write-Output "[Step 4/4] Sampling query + host.json samplingSettings..."
-$lookback = "ago(${SamplingLookbackHours}h)"
-$query = "union requests, dependencies, pageViews, browserTimings, exceptions, traces | where timestamp > ${lookback} | summarize RetainedPercentage = 100/avg(coalesce(itemCount,1)) by bin(timestamp, 1h), itemType"
-Write-Output "host.json samplingSettings status (evaluated first):";
-
-# Determine host.json path dynamically
-if ($HostJsonPath) {
-    $hostJsonPath = $HostJsonPath
-    $hostJsonSource = 'OverrideParameter'
-} else {
-    $hostJsonPath = $null
-    # Common Azure Functions layout
-    if ($env:HOME) {
-        $sitePath = Join-Path $env:HOME 'site'
-        $wwwrootPath = Join-Path $sitePath 'wwwroot'
-        if (Test-Path $wwwrootPath) {
-            $candidate = Join-Path $wwwrootPath 'host.json'
-            if (Test-Path $candidate) { $hostJsonPath = $candidate; $hostJsonSource = 'DetectedFunctionsRoot'; }
-        }
-    }
-    if (-not $hostJsonPath) {
-        # Fallback: script base path
-        $hostJsonPath = Join-Path $basePath 'host.json'
-        $hostJsonSource = 'ScriptBasePath'
+Write-Output "[Step 4/5] Sampling query (host.json where applicable)..."
+# Runtime override: if FUNCTIONS_WORKER_RUNTIME is java or dotnet-isolated, sampling must be handled in code (host.json ignored for custom logs configuration).
+$workerRuntime = (Get-AppSetting "FUNCTIONS_WORKER_RUNTIME")
+$runtimeOverride = $false
+if ($workerRuntime) {
+    $rtLower = $workerRuntime.ToLowerInvariant()
+    if ($rtLower -in @('java','dotnet-isolated')) {
+        $runtimeOverride = $true
+        Write-Output ("[Runtime] FUNCTIONS_WORKER_RUNTIME={0} detected. Sampling / logging configuration must be handled in application code; host.json samplingSettings not applicable." -f $workerRuntime)
+        Write-Output "Reference: https://learn.microsoft.com/en-us/troubleshoot/azure/azure-functions/monitoring/functions-monitoring-appinsightslogs#custom-application-logs"
     }
 }
-Write-Output ("[Info] host.json resolved from {0}: {1}" -f $hostJsonSource, $hostJsonPath)
-Add-Log ("host.json resolution source={0} path={1}" -f $hostJsonSource,$hostJsonPath)
+$lookback = "ago(${SamplingLookbackHours}h)"
+$query = "union requests, dependencies, pageViews, browserTimings, exceptions, traces | where timestamp > ${lookback} | summarize RetainedPercentage = 100/avg(coalesce(itemCount,1)) by bin(timestamp, 1h), itemType"
+if (-not $runtimeOverride) {
+    Write-Output "host.json samplingSettings status (evaluated first):";
+    # Determine host.json path dynamically
+    if ($HostJsonPath) {
+        $hostJsonPath = $HostJsonPath
+        $hostJsonSource = 'OverrideParameter'
+    } else {
+        $hostJsonPath = $null
+        # Common Azure Functions layout
+        if ($env:HOME) {
+            $sitePath = Join-Path $env:HOME 'site'
+            $wwwrootPath = Join-Path $sitePath 'wwwroot'
+            if (Test-Path $wwwrootPath) {
+                $candidate = Join-Path $wwwrootPath 'host.json'
+                if (Test-Path $candidate) { $hostJsonPath = $candidate; $hostJsonSource = 'DetectedFunctionsRoot'; }
+            }
+        }
+        if (-not $hostJsonPath) {
+            # Fallback: script base path
+            $hostJsonPath = Join-Path $basePath 'host.json'
+            $hostJsonSource = 'ScriptBasePath'
+        }
+    }
+    Write-Output ("[Info] host.json resolved from {0}: {1}" -f $hostJsonSource, $hostJsonPath)
+    Add-Log ("host.json resolution source={0} path={1}" -f $hostJsonSource,$hostJsonPath)
+}
 
 $samplingEnabled = $null
 ${hostJsonParseError} = $null
 ${hostJsonStructureIssues} = @()
-if (Test-Path $hostJsonPath) {
+if (-not $runtimeOverride -and (Test-Path $hostJsonPath)) {
     try {
         $hostJsonItem = Get-Item $hostJsonPath -ErrorAction Stop
         $hostJsonSize = $hostJsonItem.Length
@@ -497,14 +510,22 @@ if (Test-Path $hostJsonPath) {
         Write-Output (" - host.json parse failed: {0}" -f ${hostJsonParseError})
         $samplingFlag = 'ParseFailed'
     }
-} else {
+} elseif (-not $runtimeOverride) {
     Write-Output " - host.json not found"
     $samplingFlag = 'NotFound'
 }
 
-if ($samplingEnabled -eq $false) {
+if ($runtimeOverride) {
+    $samplingFlag = 'CodeManaged'
+    Write-Output "[Info] Runtime indicates code-managed logging; host.json inspection skipped entirely." 
+    Write-Output "Kusto query (24h retention sampling assessment):"
+    Write-Output $query
+    Write-Output "Interpretation: RetainedPercentage ~100 => no sampling; <100 => sampling active; fluctuations => adaptive adjustments." 
+    Write-Output "(Disable sampling via code instrumentation; host.json snippet not shown.)"
+}
+elseif ($samplingEnabled -eq $false) {
     Write-Output "[Info] Sampling is disabled. Skipping Kusto retention query (not needed)."
-} elseif ($samplingEnabled -eq $true) {
+} elseif (-not $runtimeOverride -and $samplingEnabled -eq $true) {
     Write-Output "[Action] Sampling enabled. Run Kusto query below to measure retained vs original volume and confirm impact:"
     Write-Output "Kusto query (24h retention sampling assessment):"
     Write-Output $query
@@ -513,7 +534,7 @@ if ($samplingEnabled -eq $false) {
     Write-Output " - RetainedPercentage ~100: Sampling NONE (effectively full retention)"
     Write-Output " - Drops below 100: Sampling ACTIVE (telemetry reduced)"
     Write-Output " - Variations (e.g. 95, 97): Adaptive sampling adjusting to volume"
-} else {
+} elseif (-not $runtimeOverride) {
     # Provide nuanced messaging if parse failed vs not found; treat NotFound as assumed enabled per user request
     if ($samplingFlag -eq 'ParseFailed') {
         Write-Output ("[Info] Sampling status UNKNOWN: host.json parse failed. Error: {0}. See detailed log for head + structure diagnostics." -f ${hostJsonParseError})
@@ -532,17 +553,33 @@ if ($samplingEnabled -eq $false) {
     Write-Output " - Variations (e.g. 95, 97): Adaptive sampling adjusting to volume"
 }
 Write-Output ""
-Write-Output "To disable sampling add to host.json snippet:"
-Write-Output '{'
-Write-Output '  "logging": {'
-Write-Output '    "applicationInsights": {'
-Write-Output '      "samplingSettings": {'
-Write-Output '        "isEnabled": false'
-Write-Output '      }'
-Write-Output '    }'
-Write-Output '  }'
-Write-Output '}'
+if (-not $runtimeOverride) {
+    Write-Output "To disable sampling add to host.json snippet:"
+    Write-Output '{'
+    Write-Output '  "logging": {'
+    Write-Output '    "applicationInsights": {'
+    Write-Output '      "samplingSettings": {'
+    Write-Output '        "isEnabled": false'
+    Write-Output '      }'
+    Write-Output '    }'
+    Write-Output '  }'
+    Write-Output '}'
+} else {
+    Write-Output "(Host.json disable snippet suppressed for runtime override.)"
+}
 Add-Log "Combined sampling & host.json step displayed"
+Write-Output "============================================="
+# Step 5: Worker runtime guidance (always shown)
+Write-Output "[Step 5/5] Worker runtime guidance..."
+if ($workerRuntime) {
+    if ($runtimeOverride) {
+        Write-Output ("Runtime: {0} (code-managed telemetry & sampling). See custom application logs guidance: https://learn.microsoft.com/en-us/troubleshoot/azure/azure-functions/monitoring/functions-monitoring-appinsightslogs#custom-application-logs" -f $workerRuntime)
+    } else {
+        Write-Output ("Runtime: {0} (host.json samplingSettings applicable)." -f $workerRuntime)
+    }
+} else {
+    Write-Output "Runtime: (FUNCTIONS_WORKER_RUNTIME not set)"
+}
 Write-Output "============================================="
 
 # ---------------------------
@@ -554,11 +591,23 @@ if ($skipConnectivity -and (-not $connectivityClassification -or $connectivityCl
     $connectivityClassification = "Skipped (no APPLICATIONINSIGHTS_CONNECTION_STRING)"
 }
 
+$runtimeDisplay = if ($workerRuntime) { $workerRuntime } else { '(unset)' }
+if ($samplingFlag -eq 'CodeManaged') {
+    $samplingSummaryDisplay = 'CodeManaged (not via host.json)'
+} else {
+    $samplingSummaryDisplay = $samplingFlag
+}
+if ($runtimeOverride) {
+    $runtimeSummaryDisplay = "$runtimeDisplay  CodeManaged (not via host.json)"
+} else {
+    $runtimeSummaryDisplay = $runtimeDisplay
+}
 $summaryLines = @(
     "Configuration : $summaryConfig",
     "Connectivity  : $connectivityClassification",
     "Telemetry     : $telemetryResult",
-    "SamplingFlag  : $samplingFlag"
+    "SamplingFlag  : $samplingSummaryDisplay",
+    "Runtime       : $runtimeSummaryDisplay"
 )
 $maxLen = ($summaryLines | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum
 if (-not $maxLen) { $maxLen = 0 }
@@ -626,12 +675,51 @@ if ($HtmlReportResolved) {
         $logTailText = if ($logTail) { $logTail -join "`n" } else { '(No log content)' }
     } catch { $logTailText = '(Failed to read log tail)' }
 
-    $samplingConfigured = if ($samplingFlag -is [bool]) { "Configured isEnabled: $samplingFlag" } else { '' }
+    $samplingConfigured = if ($samplingFlag -is [bool]) { "Configured isEnabled: $samplingFlag" } elseif ($samplingFlag -eq 'CodeManaged') { "Runtime override (code-managed)" } else { '' }
     $retentionQuery = "union requests, dependencies, pageViews, browserTimings, exceptions, traces | where timestamp > ago(${SamplingLookbackHours}h) | summarize RetainedPercentage = 100/avg(coalesce(itemCount,1)) by bin(timestamp, 1h), itemType"
     $appNameLine = if ($AppName) { "<p><strong>App Name:</strong> $AppName</p>" } else { '' }
     $logEscaped = ($logTailText -replace '&','&amp;') -replace '<','&lt;' -replace '>','&gt;'
 
-    $report = @"
+                # Build worker runtime guidance HTML block (expanded details)
+                $runtimeDisplayForHtml = if ($workerRuntime) { $workerRuntime } else { '(unset)' }
+                if ($runtimeOverride) {
+                        $workerRuntimeGuidanceHtml = @"
+<p><strong>Guidance:</strong> For this runtime (java / dotnet-isolated), sampling &amp; custom logs are configured in application code; host.json <code>samplingSettings</code> is ignored.</p>
+<h3>.NET isolated example: disable adaptive sampling</h3>
+<pre><code class='csharp'>// Program.cs (.NET isolated)
+builder.Services.AddApplicationInsightsTelemetryWorkerService(options =&gt; {
+        options.EnableAdaptiveSampling = false; // disables adaptive sampling
+});
+// Optionally configure TelemetryConfiguration for more processors:
+// builder.Services.AddSingleton&lt;ITelemetryInitializer, MyInitializer&gt;();
+</code></pre>
+<h3>Java example: remove sampling processor</h3>
+<pre><code class='java'>TelemetryConfiguration config = TelemetryConfiguration.getActive();
+config.getTelemetryProcessors()
+            .removeIf(p -&gt; p.getClass().getSimpleName().equals("AdaptiveSamplingTelemetryProcessor"));
+// If using Spring Boot starter, you can disable via application.properties:
+// azure.application-insights.enable-adaptive-sampling=false
+</code></pre>
+<p>After disabling, the RetainedPercentage in the Kusto query should remain close to 100 indicating full retention.</p>
+<p>Reference: <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/azure-functions/monitoring/functions-monitoring-appinsightslogs#custom-application-logs" target="_blank">Custom application logs guidance</a>.</p>
+"@
+                } else {
+                        $workerRuntimeGuidanceHtml = @"
+<p>Host.json samplingSettings apply for this runtime. To disable sampling add:</p>
+<pre><code class='json'>{
+    \"logging\": {
+        \"applicationInsights\": {
+            \"samplingSettings\": {
+                \"isEnabled\": false
+            }
+        }
+    }
+}</code></pre>
+<p>Restart the Function App after editing <code>host.json</code>. Use the retention query to confirm RetainedPercentage ~100 (no sampling).</p>
+"@
+                }
+
+                $report = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -664,7 +752,8 @@ if ($HtmlReportResolved) {
             <tr><td>Configuration</td><td>$summaryConfig</td></tr>
             <tr><td>Connectivity</td><td>$connectivityClassification</td></tr>
             <tr><td>Telemetry</td><td>$telemetryResult</td></tr>
-            <tr><td>SamplingFlag</td><td>$samplingFlag</td></tr>
+            <tr><td>SamplingFlag</td><td>$(if ($samplingFlag -eq 'CodeManaged') { 'CodeManaged (not via host.json)' } else { $samplingFlag })</td></tr>
+            <tr><td>Runtime</td><td>$(if ($runtimeOverride) { "$runtimeDisplayForHtml CodeManaged (not via host.json)" } else { $runtimeDisplayForHtml })</td></tr>
         </table>
     </div>
     <div class="section">
@@ -681,13 +770,17 @@ if ($HtmlReportResolved) {
         $validationSection
     </div>
     <div class="section">
-        <h2>Sampling</h2>
+        <h2>Sampling (Step 4)</h2>
         <p>Sampling flag: $samplingFlag<br/>$samplingConfigured</p>
         <h3>Retention query (24h window)</h3>
         <pre><code class='kusto'>$($retentionQuery -replace '<','&lt;' -replace '>','&gt;')</code></pre>
         <p><em>Interpretation:</em> RetainedPercentage ~100 =&gt; no/zero sampling; &lt;100 =&gt; sampling active; fluctuating =&gt; adaptive sampling adjustments.</p>
-        <h3>Disable Sampling Snippet</h3>
-        <pre><code class='json'>{`n  "logging": {`n    "applicationInsights": {`n      "samplingSettings": {`n        "isEnabled": false`n      }`n    }`n  }`n}</code></pre>
+        $(if (-not $runtimeOverride) { '<h3>Disable Sampling Snippet</h3><pre><code class="json">{`n  "logging": {`n    "applicationInsights": {`n      "samplingSettings": {`n        "isEnabled": false`n      }`n    }`n  }`n}</code></pre>' } else { '<p><strong>Runtime override:</strong> sampling & logging must be configured in code for this worker runtime. See <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/azure-functions/monitoring/functions-monitoring-appinsightslogs#custom-application-logs" target="_blank">documentation</a>.</p>' })
+    </div>
+    <div class="section">
+        <h2>Worker Runtime (Step 5)</h2>
+        <p>FUNCTIONS_WORKER_RUNTIME: $runtimeDisplayForHtml</p>
+        $workerRuntimeGuidanceHtml
     </div>
     <div class="section">
         <h2>Redacted Log (tail)</h2>

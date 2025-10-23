@@ -18,12 +18,14 @@ This tool provides quick validation of Application Insights configuration and te
 
 ### Key Capabilities
 
-* ✅ Validates configuration (`APPLICATIONINSIGHTS_CONNECTION_STRING` vs. legacy `APPINSIGHTS_INSTRUMENTATIONKEY`)
-* ✅ Tests reachability of the ingestion endpoint
-* ✅ Sends a small custom event and validates telemetry ingestion
-* ✅ Detects Application Insights sampling settings from `host.json` and provides a Kusto query to assess telemetry retention
-* ✅ Generates an HTML report and redacted log
-* ✅ Links to relevant portal detectors
+* ✅ Config check (connection string vs legacy iKey)
+* ✅ Ingestion endpoint reachability (curl)
+* ✅ Minimal telemetry send + validation query
+* ✅ Sampling status from `host.json` or from language worker (`CodeManaged` for java / dotnet-isolated)
+* ✅ Retention Kusto query (hourly `RetainedPercentage`) for sampling impact
+* ✅ Worker runtime guidance
+* ✅ HTML report + redacted log + annotated summary 
+* ✅ Portal detector guidance .
 
 ---
 
@@ -33,15 +35,14 @@ This tool provides quick validation of Application Insights configuration and te
 
 1. Download `AppInsightsDiag.ps1` locally
 2. Navigate to:
-   `https://<sitename>.scm.azurewebsites.net/DebugConsole/?shell=powershell`
+  `https://<sitename>.scm.azurewebsites.net/DebugConsole/?shell=powershell`
 3. Upload the script (e.g., to `/site/wwwroot`)
 4. Run in PowerShell console:
 
    ```powershell
    ./AppInsightsDiag.ps1
    ```
-5. A new folder **Application Insights Diagnostic** is created.
-   Download the **HTML report** from there.
+5. A new folder **Application Insights Diagnostic** is created. Download the **HTML report** from there.
 
 ---
 
@@ -57,44 +58,9 @@ This tool provides quick validation of Application Insights configuration and te
    ```bash
    ./appinsights_diag.sh
    ```
-
-<details>
-<summary>Output Modes</summary>
-
-| Mode      | Command                         | Description                                     |
-| --------- | ------------------------------- | ----------------------------------------------- |
-| ✅ Default | `./appinsights_diag.sh`         | Verbose output with guidance                    |
-| ⚠️ Quiet  | `./appinsights_diag.sh --quiet` | Minimal console output                          |
-| ✅ Full    | `./appinsights_diag.sh --full`  | Adds environment snapshot and extended guidance |
-
 After execution, download the HTML report and log from the **Application Insights Diagnostic** directory.
 
 > ⚠️ Not supported on **Linux Consumption** or **Flex Consumption** — Kudu shell not available.
-
-</details>
-
-<details>
-<summary>Linux Flags Summary</summary>
-
-| Flag                  | Purpose                                                   |
-| --------------------- | --------------------------------------------------------- |
-| *(default)*           | Verbose mode                                              |
-| `--quiet`, `-q`       | Minimal output                                            |
-| `--full`, `-F`        | Full mode with environment snapshot                       |
-| `--output-dir <dir>`  | Custom output directory                                   |
-| `--report <file>`     | Custom report path/name                                   |
-| `--site-path <rel>`   | Relative path for silent GET (default `/AppInsightsDiag`) |
-| `--disable-site-ping` | Skip site reachability test                               |
-| `--no-redact`         | Disable redaction of secrets in log                       |
-| `--verbose`, `-v`     | Explicitly enable verbose (redundant)                     |
-
-**Example combined usage:**
-
-```bash
-./appinsights_diag.sh --full --output-dir diag_out --report /home/site/wwwroot/ai-linux.html --site-path /PingStats --disable-site-ping
-```
-
-</details>
 
 ---
 
@@ -118,8 +84,7 @@ After execution, download the HTML report and log from the **Application Insight
 | ✅ **Telemetry**     | HTTP 200 Rec:1 Acc:1 Err:0 → success                           |
 | ⚠️ **SamplingFlag** | True · False · NotFound · ParseFailed · ImplicitDefaultEnabled |
 
-> ⚠️ `ImplicitDefaultEnabled` indicates that `samplingSettings.isEnabled` was **not explicitly set** in `host.json`.
-> Sampling is **enabled by default** in this case.
+> ⚠️ `ImplicitDefaultEnabled` indicates that `samplingSettings.isEnabled` was **not explicitly set** in `host.json`. Sampling is enabled by default when missing.
 
 <details>
 <summary>Sampling Detection Details</summary>
@@ -187,30 +152,17 @@ union requests, dependencies, pageViews, browserTimings, exceptions, traces
 
 ---
 
-<details>
-<summary>Common PowerShell Options</summary>
-
-```powershell
-./AppInsightsDiag.ps1 -VerboseMode
-./AppInsightsDiag.ps1 -HtmlReportPath C:\temp\ai-report.html
-./AppInsightsDiag.ps1 -HostJsonPath C:\home\site\wwwroot\host.json
-```
-
-</details>
-
----
-
 ## Portal Detector
 
 **Azure Portal → Function App → Diagnose and solve problems →**
-Run **Function App Missing Telemetry in Application Insights / OpenTelemetry** detector .
+Run **Function App Missing Telemetry in Application Insights / OpenTelemetry** detector.
 
 ---
 
 ## Security and Privacy
 
 * 🔒 Connection strings and instrumentation keys are **redacted** in logs
-* 🔒 Script performs a **silent GET** to `/AppInsightsDiag` for reachability only
+* 🔒 Script performs a **silent GET** to `/AppInsightsDiag` for basic reachability only
 
   * Expected response: **404 (Expected404)**
   * No secret data or response body is stored
