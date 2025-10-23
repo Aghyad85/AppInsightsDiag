@@ -7,7 +7,8 @@ Minimal diagnostic script to validate **Application Insights telemetry** for **A
 > * Windows & Linux Dedicated
 > * Windows & Linux Elastic Premium
 > * Windows Consumption
->   ⚠️ **Not supported:** Linux Consumption or Flex Consumption (Kudu/console not available).
+
+ ⚠️ **Not supported:** Linux Consumption or Flex Consumption (Kudu/console not available).
 
 ---
 
