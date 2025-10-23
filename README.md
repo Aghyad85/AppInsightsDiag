@@ -17,7 +17,7 @@ This tool provides quick validation of Application Insights configuration and te
 
 ### Key Capabilities
 
-* ✅ Validates configuration (Connection String vs. legacy iKey)
+* ✅ Validates configuration (`APPLICATIONINSIGHTS_CONNECTION_STRING` vs. legacy `APPINSIGHTS_INSTRUMENTATIONKEY`)
 * ✅ Tests reachability of the ingestion endpoint
 * ✅ Sends a small custom event and validates telemetry ingestion
 * ✅ Detects Application Insights sampling settings from `host.json` and provides a Kusto query to assess telemetry retention

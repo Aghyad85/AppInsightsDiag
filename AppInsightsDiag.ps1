@@ -110,9 +110,9 @@ $hasConnectionString  = -not [string]::IsNullOrWhiteSpace((Get-AppSetting "APPLI
 
 $configStatus = ""
 if ($hasInstrumentationKey -and $hasConnectionString) {
-    $configStatus = "Both exist (remove iKey, keep connection string)"; if ($VerboseMode) { Write-Output $configStatus }
+    $configStatus = "Both exist (remove APPINSIGHTS_INSTRUMENTATIONKEY, keep APPLICATIONINSIGHTS_CONNECTION_STRING)"; if ($VerboseMode) { Write-Output $configStatus }
 } elseif ($hasInstrumentationKey -and -not $hasConnectionString) {
-    $configStatus = "iKey only (should migrate)"; if ($VerboseMode) { Write-Output $configStatus }
+    $configStatus = "APPINSIGHTS_INSTRUMENTATIONKEY only (should migrate)"; if ($VerboseMode) { Write-Output $configStatus }
 } elseif ($hasConnectionString) {
     $configStatus = "OK"; if ($VerboseMode) { Write-Output "APPLICATIONINSIGHTS_CONNECTION_STRING is correctly set." }
 } else {

@@ -177,8 +177,8 @@ out "Output directory: $OUTPUT_DIR"
 
 CONN_STRING="${APPLICATIONINSIGHTS_CONNECTION_STRING:-}"; IKEY="${APPINSIGHTS_INSTRUMENTATIONKEY:-}";
 CONFIG_STATUS="Missing"
-if [[ -n "$CONN_STRING" && -n "$IKEY" ]]; then CONFIG_STATUS="Both exist (remove iKey, keep connection string)";
-elif [[ -n "$IKEY" ]]; then CONFIG_STATUS="iKey only (migrate)";
+if [[ -n "$CONN_STRING" && -n "$IKEY" ]]; then CONFIG_STATUS="Both exist (remove APPINSIGHTS_INSTRUMENTATIONKEY, keep APPLICATIONINSIGHTS_CONNECTION_STRING)";
+elif [[ -n "$IKEY" ]]; then CONFIG_STATUS="APPINSIGHTS_INSTRUMENTATIONKEY only (migrate)";
 elif [[ -n "$CONN_STRING" ]]; then CONFIG_STATUS="OK"; fi
 out "Configuration: $CONFIG_STATUS"
 case "$CONFIG_STATUS" in
