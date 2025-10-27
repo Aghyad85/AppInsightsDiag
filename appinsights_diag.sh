@@ -539,13 +539,6 @@ builder.Services.AddApplicationInsightsTelemetryWorkerService(options => {
 });
 // Additional telemetry processors / initializers can be added via DI.
 </code></pre>
-<h3>Java example: remove sampling processor</h3>
-<pre><code class='java'>TelemetryConfiguration config = TelemetryConfiguration.getActive();
-config.getTelemetryProcessors()
-      .removeIf(p -> p.getClass().getSimpleName().equals("AdaptiveSamplingTelemetryProcessor"));
-// Spring Boot starter alternative:
-// azure.application-insights.enable-adaptive-sampling=false
-</code></pre>
 <p>After disabling, RetainedPercentage in the retention query should remain ~100 indicating full retention.</p>
 <p>Reference: <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/azure-functions/monitoring/functions-monitoring-appinsightslogs#custom-application-logs" target="_blank">Custom application logs guidance</a>.</p>
 RHTML

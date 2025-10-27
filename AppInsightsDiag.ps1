@@ -702,23 +702,16 @@ if ($HtmlReportResolved) {
 
                 # Build worker runtime guidance HTML block (expanded details)
                 $runtimeDisplayForHtml = if ($workerRuntime) { $workerRuntime } else { '(unset)' }
-                if ($runtimeOverride) {
-                        $workerRuntimeGuidanceHtml = @"
+        if ($runtimeOverride) {
+            $workerRuntimeGuidanceHtml = @"
 <p><strong>Guidance:</strong> For this runtime (java / dotnet-isolated), sampling &amp; custom logs are configured in application code; host.json <code>samplingSettings</code> is ignored.</p>
 <h3>.NET isolated example: disable adaptive sampling</h3>
 <pre><code class='csharp'>// Program.cs (.NET isolated)
 builder.Services.AddApplicationInsightsTelemetryWorkerService(options =&gt; {
-        options.EnableAdaptiveSampling = false; // disables adaptive sampling
+    options.EnableAdaptiveSampling = false; // disables adaptive sampling
 });
 // Optionally configure TelemetryConfiguration for more processors:
 // builder.Services.AddSingleton&lt;ITelemetryInitializer, MyInitializer&gt;();
-</code></pre>
-<h3>Java example: remove sampling processor</h3>
-<pre><code class='java'>TelemetryConfiguration config = TelemetryConfiguration.getActive();
-config.getTelemetryProcessors()
-            .removeIf(p -&gt; p.getClass().getSimpleName().equals("AdaptiveSamplingTelemetryProcessor"));
-// If using Spring Boot starter, you can disable via application.properties:
-// azure.application-insights.enable-adaptive-sampling=false
 </code></pre>
 <p>After disabling, the RetainedPercentage in the Kusto query should remain close to 100 indicating full retention.</p>
 <p>Reference: <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/azure-functions/monitoring/functions-monitoring-appinsightslogs#custom-application-logs" target="_blank">Custom application logs guidance</a>.</p>
