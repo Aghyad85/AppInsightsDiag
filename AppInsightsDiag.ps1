@@ -259,6 +259,16 @@ if (-not $skipConnectivity) {
             }
             Write-Output ("Connectivity result: HTTP {0} -> {1}" -f $statusCode, $connectivityStatus)
             Add-Log "Connectivity executed via curl status=$statusCode classification=$connectivityStatus"
+            if ($connectivityStatus -ne 'Reachable') {
+                if ($VerboseMode) {
+                    Write-Output '[Insight] Connectivity issue. Quick checklist:'
+                    Write-Output '  - Region match: IngestionEndpoint host vs AI resource region'
+                    Write-Output "  - curl -v $testUrl for DNS/TLS details"
+                    Write-Output '  - Outbound 443 allowed to *.applicationinsights.azure.com'
+                    Write-Output '  - Re-copy connection string if stale'
+                    if ($connectivityStatus -like 'NotFound*') { Write-Output '  - 404: usually region mismatch or wrong endpoint' }
+                }
+            }
         } catch {
             Write-Output "Connectivity execution failed (curl): $_"
             Add-Log "Connectivity curl failed: $_"
@@ -272,6 +282,16 @@ if (-not $skipConnectivity) {
             $connectivityStatus = if ($statusCode -in 200,405) { 'Reachable' } elseif ($statusCode -eq 404) { 'NotFound(404)' } else { "Status:$statusCode" }
             Write-Output ("Connectivity result (Invoke-WebRequest): HTTP {0} -> {1}" -f $statusCode, $connectivityStatus)
             Add-Log "Connectivity executed via Invoke-WebRequest status=$statusCode classification=$connectivityStatus"
+            if ($connectivityStatus -ne 'Reachable') {
+                if ($VerboseMode) {
+                    Write-Output '[Insight] Connectivity issue. Quick checklist:'
+                    Write-Output '  - Region match: IngestionEndpoint host vs AI resource region'
+                    Write-Output "  - curl -v $testUrl for DNS/TLS details (compare)"
+                    Write-Output '  - Outbound 443 allowed to *.applicationinsights.azure.com'
+                    Write-Output '  - Re-copy connection string if stale'
+                    if ($connectivityStatus -like 'NotFound*') { Write-Output '  - 404: usually region mismatch or wrong endpoint' }
+                }
+            }
         } catch {
             $statusCode = if ($_.Exception.Response) { $_.Exception.Response.StatusCode.value__ } else { 'N/A' }
             Write-Output "Connectivity execution failed (Invoke-WebRequest): $_"

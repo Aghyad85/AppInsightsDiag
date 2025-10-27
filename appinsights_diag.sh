@@ -205,7 +205,6 @@ SITE_STATUS="Skipped"
 if [[ $SITE_PING -eq 1 && -n "$APP_NAME" ]]; then
   REL="$SITE_RELATIVE_PATH"; [[ $REL != /* ]] && REL="/$REL"
   FULL_URL="https://${APP_NAME}.azurewebsites.net${REL}"
-  verb "[Hidden] Silent GET: $FULL_URL (expect 404)"
   HTTP_SITE=$(curl -s -o /dev/null -w '%{http_code}' -L "$FULL_URL" || echo "ERR")
   case "$HTTP_SITE" in
     200|301|302) SITE_STATUS="Reachable";;
@@ -228,6 +227,8 @@ if [[ $MISSING_CONFIG -eq 0 ]]; then
   [[ -n "$INGEST_ENDPOINT" ]] && INGEST_ENDPOINT="${INGEST_ENDPOINT%/}"
   if [[ -z "$INGEST_ENDPOINT" ]]; then
     out "[WARN] IngestionEndpoint not found in connection string."; CONNECTIVITY_CLASS="MissingEndpoint"; EXIT_CODE=3
+    verb "[Insight] The connection string should contain IngestionEndpoint=...; regenerate it from the Application Insights resource Overview page if absent."
+    verb "[Insight] Verify you copied the Connection String (not just the instrumentation key)."
   else
     TRACK_URL="${INGEST_ENDPOINT}/v2/track"
     out "Connectivity command: curl -I $TRACK_URL"
@@ -240,6 +241,14 @@ if [[ $MISSING_CONFIG -eq 0 ]]; then
     esac
     out "Connectivity result: HTTP $HTTP_CONN -> $CONNECTIVITY_CLASS"
     log "Connectivity http=$HTTP_CONN classification=$CONNECTIVITY_CLASS"
+    if [[ "$CONNECTIVITY_CLASS" != "Reachable" ]]; then
+      verb "[Insight] Connectivity issue. Quick checklist:";
+      verb "  - Region match: IngestionEndpoint host vs AI resource region";
+      verb "  - curl -v $TRACK_URL for DNS/TLS details";
+      verb "  - Outbound 443 allowed to *.applicationinsights.azure.com";
+      verb "  - Re-copy connection string if stale";
+      if [[ "$CONNECTIVITY_CLASS" == NotFound* ]]; then verb "  - 404: usually region mismatch or wrong endpoint"; fi
+    fi
   fi
 fi
 
