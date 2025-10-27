@@ -1,6 +1,6 @@
 # Application Insights Diagnostics (Preview)
 
-Minimal diagnostic script to validate **Application Insights telemetry** for **Azure Functions** or **App Service**.
+Minimal diagnostic script to validate **Application Insights telemetry** for **Azure Functions**.
 
 > ✅ **Supported Hosting Plans:**
 >
