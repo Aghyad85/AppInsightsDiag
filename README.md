@@ -8,7 +8,7 @@ Minimal diagnostic script to validate **Application Insights telemetry** for **A
 > * Windows & Linux Elastic Premium
 > * Windows Consumption
 
- ⚠️ **Not supported:** Linux Consumption or Flex Consumption (Kudu/console not available).
+ ⚠️ **Not supported:** Linux Consumption or Flex Consumption (no console shell available).
 
 ---
 
@@ -19,13 +19,15 @@ This tool provides quick validation of Application Insights configuration and te
 ### Key Capabilities
 
 * ✅ Config check (connection string vs legacy iKey)
-* ✅ Ingestion endpoint reachability (curl)
-* ✅ Minimal telemetry send + validation query
-* ✅ Sampling status from `host.json` or from language worker (`CodeManaged` for java / dotnet-isolated)
-* ✅ Retention Kusto query (hourly `RetainedPercentage`) for sampling impact
-* ✅ Worker runtime guidance
-* ✅ HTML report + redacted log + annotated summary 
-* ✅ Portal detector guidance .
+* ✅ Ingestion endpoint reachability (curl HEAD)
+* ✅ Minimal telemetry send + validation query (EventData; `--availability` flag for AvailabilityData on Linux)
+* ✅ Sampling status from host.json or runtime override (`CodeManaged` for java / dotnet-isolated)
+* ✅ Retention Kusto query (hourly `RetainedPercentage`) to measure sampling impact
+* ✅ Silent site GET classification (Expected404 vs other)
+* ✅ Worker runtime guidance (host.json vs code-managed sampling)
+* ✅ HTML report + redacted log + annotated summary (SamplingFlag / Runtime)
+* ✅ Structured exit codes (0/2/3/4/5)
+* ✅ Portal detector guidance (Missing Telemetry / OpenTelemetry)
 
 ---
 
@@ -62,6 +64,25 @@ After execution, download the HTML report and log from the **Application Insight
 
 > ⚠️ Not supported on **Linux Consumption** or **Flex Consumption** — Kudu shell not available.
 
+#### Linux Flags Summary
+
+| Flag | Purpose |
+|------|---------|
+| *(default)* | Verbose output |
+| `--quiet` / `-q` | Minimal output |
+| `--full` / `-F` | Env snapshot & extended guidance |
+| `--availability` | Send AvailabilityData envelope via `/v2.1/track` |
+| `--emit-payload` | Print raw telemetry JSON inline |
+| `--hide-payload` | Force redaction of telemetry JSON |
+| `--host-json <file>` | Explicit host.json path override |
+| `--output-dir <dir>` | Custom output directory |
+| `--report <file>` | Custom HTML report path/name |
+| `--site-path <rel>` | Path for silent GET (default `/AppInsightsDiag`) |
+| `--disable-site-ping` | Skip silent reachability GET |
+| `--no-redact` | Do not redact secrets in log |
+
+Exit Codes: 0=Success · 2=MissingConfig · 3=ConnectivityFail · 4=TelemetryFail · 5=SamplingParseFail
+
 ---
 
 ## Troubleshooting Quick Reference
@@ -85,9 +106,10 @@ After execution, download the HTML report and log from the **Application Insight
 | ⚠️ **SamplingFlag** | True · False · NotFound · ParseFailed · ImplicitDefaultEnabled |
 
 > ⚠️ `ImplicitDefaultEnabled` indicates that `samplingSettings.isEnabled` was **not explicitly set** in `host.json`. Sampling is enabled by default when missing.
+> `CodeManaged` indicates runtime (java / dotnet-isolated) handles sampling/logging in code (host.json ignored).
+> `NotFound(AssumedEnabled)` may appear when host.json missing; sampling assumed enabled by platform defaults.
 
-<details>
-<summary>Sampling Detection Details</summary>
+### Sampling Detection Details
 
 | Condition                                 | SamplingFlag             | Interpretation                |
 | ----------------------------------------- | ------------------------ | ----------------------------- |
@@ -95,9 +117,9 @@ After execution, download the HTML report and log from the **Application Insight
 | `"isEnabled": true`                       | `True`                   | Sampling explicitly enabled   |
 | `"isEnabled": false`                      | `False`                  | Sampling disabled             |
 | Parse error                               | `ParseFailed`            | Invalid JSON                  |
-| File missing                              | `NotFound`               | Treated as enabled by default |
+| File missing                              | `NotFound` / `NotFound(AssumedEnabled)` | Treated as enabled by default |
 
-**Kusto Retention Query**
+#### Retention Query (24h window)
 
 ```kusto
 union requests, dependencies, pageViews, browserTimings, exceptions, traces
@@ -105,13 +127,13 @@ union requests, dependencies, pageViews, browserTimings, exceptions, traces
 | summarize RetainedPercentage = 100/avg(coalesce(itemCount,1)) by bin(timestamp,1h), itemType
 ```
 
-**Interpretation:**
+#### Interpretation
 
-* ≈100 → Full retention, no sampling
+* ~100 → Full retention (no sampling)
 * <100 → Sampling active (reduced telemetry)
-* Fluctuating 90–99 → Adaptive sampling
+* 90–99 fluctuating → Adaptive sampling
 
-**To disable sampling explicitly**, add to `host.json`:
+#### Disable sampling (host.json)
 
 ```json
 {
@@ -125,14 +147,12 @@ union requests, dependencies, pageViews, browserTimings, exceptions, traces
 }
 ```
 
-</details>
 
 ---
 
-<details>
-<summary>Kusto Snippets</summary>
+### Kusto Snippets
 
-**Event validation**
+#### Event validation
 
 ```kusto
 customEvents
@@ -140,7 +160,7 @@ customEvents
 | where name == 'curlConnectivityTestEvent-<GUID>'
 ```
 
-**Sampling retention**
+#### Sampling retention (same query)
 
 ```kusto
 union requests, dependencies, pageViews, browserTimings, exceptions, traces
@@ -148,7 +168,6 @@ union requests, dependencies, pageViews, browserTimings, exceptions, traces
 | summarize RetainedPercentage = 100/avg(coalesce(itemCount,1)) by bin(timestamp,1h), itemType
 ```
 
-</details>
 
 ---
 
@@ -161,8 +180,8 @@ Run **Function App Missing Telemetry in Application Insights / OpenTelemetry** d
 
 ## Security and Privacy
 
-* 🔒 Connection strings and instrumentation keys are **redacted** in logs
-* 🔒 Script performs a **silent GET** to `/AppInsightsDiag` for basic reachability only
+* 🔒 Connection strings and instrumentation keys are **redacted** in logs & HTML
+* 🔒 Script performs a silent GET to `/AppInsightsDiag` for basic reachability only
 
   * Expected response: **404 (Expected404)**
   * No secret data or response body is stored
@@ -177,7 +196,7 @@ If issues persist after running the script and portal detector:
 * Open **Azure Support** request
 * Attach:
 
-  * ✅ Generated **HTML report** (`Application Insights Diagnostic` folder or custom path)
+  * ✅ Generated HTML report (`Application Insights Diagnostic` folder or custom path)
   * ✅ Redacted log file
 
 These artifacts help accelerate triage and resolution.
